@@ -52,7 +52,7 @@ class BookingOrder {
       serviceName: json['serviceName'] as String,
       servicePrice: json['servicePrice'] as String? ?? '',
       serviceDuration: json['serviceDuration'] as String? ?? '',
-      startTime: DateTime.parse(json['startTime'] as String),
+      startTime: DateTime.parse(json['startTime'] as String).toLocal(),
       status: json['status'] as String,
       statusLabel: json['statusLabel'] as String? ?? json['status'] as String,
       userMessage: json['userMessage'] as String? ?? '',
@@ -62,8 +62,8 @@ class BookingOrder {
       review: json['review'] is Map
           ? Map<String, dynamic>.from(json['review'] as Map)
           : null,
-      createdAt: DateTime.parse(json['createdAt'] as String),
-      updatedAt: DateTime.parse(json['updatedAt'] as String),
+      createdAt: DateTime.parse(json['createdAt'] as String).toLocal(),
+      updatedAt: DateTime.parse(json['updatedAt'] as String).toLocal(),
     );
   }
 }
