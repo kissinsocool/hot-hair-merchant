@@ -21,6 +21,7 @@ class AdminRepository {
     required String displayName,
     required String password,
     required String salonId,
+    required String deposit,
   }) async {
     final response = await _apiClient.request(
       '/admin/merchants',
@@ -30,6 +31,7 @@ class AdminRepository {
         'displayName': displayName,
         'password': password,
         'salonId': salonId,
+        'deposit': deposit,
       },
     );
     final data = Map<String, dynamic>.from(response.data as Map);
@@ -41,6 +43,7 @@ class AdminRepository {
     required String username,
     required String displayName,
     required String salonId,
+    required String deposit,
     String password = '',
   }) async {
     final response = await _apiClient.request(
@@ -50,6 +53,7 @@ class AdminRepository {
         'username': username,
         'displayName': displayName,
         'salonId': salonId,
+        'deposit': deposit,
         'password': password,
       },
     );
@@ -64,6 +68,20 @@ class AdminRepository {
   }) async {
     final response = await _apiClient.request(
       '/admin/merchants/$id/license',
+      method: 'PATCH',
+      data: {'action': approve ? 'approve' : 'reject', 'reason': reason},
+    );
+    final data = Map<String, dynamic>.from(response.data as Map);
+    return Map<String, dynamic>.from(data['merchant'] as Map);
+  }
+
+  Future<Map<String, dynamic>> reviewMerchantContent({
+    required String id,
+    required bool approve,
+    String reason = '',
+  }) async {
+    final response = await _apiClient.request(
+      '/admin/merchants/$id/content',
       method: 'PATCH',
       data: {'action': approve ? 'approve' : 'reject', 'reason': reason},
     );

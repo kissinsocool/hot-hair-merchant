@@ -2,18 +2,24 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:geolocator/geolocator.dart';
 
 import '../../../core/theme/app_theme.dart';
+import '../../../core/widgets/page_width.dart';
 import '../../booking/data/booking_update_stream.dart';
-import '../data/china_regions.dart';
 import '../data/image_upload_picker.dart';
 import '../data/merchant_salon_repository.dart';
 import 'merchant_notifications_screen.dart';
 
 class MerchantSalonScreen extends StatefulWidget {
-  const MerchantSalonScreen({super.key, this.repository});
+  const MerchantSalonScreen({
+    super.key,
+    this.repository,
+    this.enableRealtime = true,
+  });
 
   final MerchantSalonRepository? repository;
+  final bool enableRealtime;
 
   @override
   State<MerchantSalonScreen> createState() => _MerchantSalonScreenState();
@@ -42,6 +48,8 @@ class _MerchantSalonScreenState extends State<MerchantSalonScreen> {
 
   bool _isLoading = true;
   bool _isSaving = false;
+  bool _isGeocoding = false;
+  bool _hasTriedAutoLocation = false;
   bool _isUploadingCover = false;
   int? _uploadingStaffIndex;
   int? _uploadingServiceIndex;
@@ -61,10 +69,12 @@ class _MerchantSalonScreenState extends State<MerchantSalonScreen> {
   void initState() {
     super.initState();
     _loadSalon();
-    BookingUpdateStream.instance.start();
-    _bookingUpdateSubscription = BookingUpdateStream.instance.stream.listen(
-      _handleBookingEvent,
-    );
+    if (widget.enableRealtime) {
+      BookingUpdateStream.instance.start();
+      _bookingUpdateSubscription = BookingUpdateStream.instance.stream.listen(
+        _handleBookingEvent,
+      );
+    }
   }
 
   @override
@@ -88,6 +98,7 @@ class _MerchantSalonScreenState extends State<MerchantSalonScreen> {
         _staff = _mapList(salon['staff']);
         _isLoading = false;
       });
+      unawaited(_autoFillAddressFromCurrentLocation());
     } catch (e) {
       if (!mounted) return;
       setState(() {
@@ -156,9 +167,16 @@ class _MerchantSalonScreenState extends State<MerchantSalonScreen> {
   }
 
   Future<void> _saveSalon() async {
+    final validationMessage = _validateSalonBeforeSave();
+    if (validationMessage != null) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(validationMessage)));
+      return;
+    }
+
     setState(() => _isSaving = true);
     try {
-      _syncAddressText();
       final savedSalon = await _repository.saveSalon({
         ..._salon,
         'services': _services,
@@ -172,7 +190,12 @@ class _MerchantSalonScreenState extends State<MerchantSalonScreen> {
       });
       ScaffoldMessenger.of(
         context,
-      ).showSnackBar(const SnackBar(content: Text('店铺信息已保存')));
+      ).showSnackBar(const SnackBar(content: Text('店铺信息已提交审核')));
+    } on SalonNameExistsException {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('店名已存在，不能保存成功')));
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(
@@ -183,15 +206,195 @@ class _MerchantSalonScreenState extends State<MerchantSalonScreen> {
     }
   }
 
-  void _syncAddressText() {
-    final region = _addressRegion();
-    final detail = (_salon['addressDetail'] ?? '').toString().trim();
-    final regionText =
-        [region['provinceName'], region['cityName'], region['districtName']]
-            .where((item) => item != null && item.toString().trim().isNotEmpty)
-            .join('');
-    final address = '$regionText$detail'.trim();
-    if (address.isNotEmpty) _salon['address'] = address;
+  String? _validateSalonBeforeSave() {
+    String text(dynamic value) => value?.toString().trim() ?? '';
+
+    for (final item in [
+      ('店铺名称', _salon['name']),
+      ('店铺地址', _salon['address']),
+      ('营业时间', _salon['openingHours']),
+      ('电话', _salon['phone']),
+      ('首页短介绍', _salon['description']),
+      ('详情页关于我们', _salon['fullDescription']),
+      ('封面图', _salon['image']),
+    ]) {
+      if (text(item.$2).isEmpty) return '请填写${item.$1}';
+    }
+    if (_promoImages().isEmpty) return '请至少上传一张推广图';
+    if (_services.isEmpty) return '请至少添加一个服务套餐';
+    for (var i = 0; i < _services.length; i += 1) {
+      final service = _services[i];
+      for (final item in [
+        ('第${i + 1}个套餐服务效果图', service['imageUrl']),
+        ('第${i + 1}个套餐名称', service['name']),
+        ('第${i + 1}个套餐价格', service['price']),
+        ('第${i + 1}个套餐时长', service['duration']),
+        ('第${i + 1}个套餐备注', service['note']),
+      ]) {
+        if (text(item.$2).isEmpty || text(item.$2) == '¥') {
+          return '请填写${item.$1}';
+        }
+      }
+    }
+    if (_staff.isEmpty) return '请至少添加一个理发师';
+    for (var i = 0; i < _staff.length; i += 1) {
+      final profile = _staff[i];
+      for (final item in [
+        ('第${i + 1}个理发师头像', profile['imageUrl']),
+        ('第${i + 1}个理发师姓名', profile['name']),
+        ('第${i + 1}个理发师职位', profile['role']),
+        ('第${i + 1}个理发师经验', profile['experience']),
+        ('第${i + 1}个理发师个人简介', profile['bio']),
+      ]) {
+        if (text(item.$2).isEmpty) return '请填写${item.$1}';
+      }
+    }
+    return null;
+  }
+
+  String _salonAddressText() {
+    return (_salon['address'] ?? '').toString().trim();
+  }
+
+  Future<void> _autoFillAddressFromCurrentLocation() async {
+    if (_hasTriedAutoLocation || !mounted) return;
+    _hasTriedAutoLocation = true;
+    if (_salonAddressText().isNotEmpty) return;
+
+    setState(() => _isGeocoding = true);
+    try {
+      final serviceEnabled = await Geolocator.isLocationServiceEnabled();
+      if (!serviceEnabled) return;
+
+      var permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+      }
+      if (permission == LocationPermission.denied ||
+          permission == LocationPermission.deniedForever) {
+        return;
+      }
+
+      final position = await Geolocator.getCurrentPosition(
+        locationSettings: const LocationSettings(
+          accuracy: LocationAccuracy.high,
+          timeLimit: Duration(seconds: 12),
+        ),
+      );
+      final result = await _repository.reverseGeocodeLocation(
+        latitude: position.latitude,
+        longitude: position.longitude,
+      );
+      final address = result['address']?.toString().trim() ?? '';
+      if (!mounted || address.isEmpty || _salonAddressText().isNotEmpty) {
+        return;
+      }
+
+      setState(() {
+        _setSalonLocation(position.latitude, position.longitude);
+        _salon['address'] = address;
+        _salon['addressDetail'] = '';
+        _salon['addressRegion'] = {};
+      });
+    } catch (_) {
+      // 自动定位失败时保持空地址，商家仍可手动编辑。
+    } finally {
+      if (mounted) setState(() => _isGeocoding = false);
+    }
+  }
+
+  Future<void> _refreshSalonLocation() async {
+    if (!mounted) return;
+
+    setState(() => _isGeocoding = true);
+    try {
+      final serviceEnabled = await Geolocator.isLocationServiceEnabled();
+      if (!serviceEnabled) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('请开启定位服务后重试')));
+        return;
+      }
+
+      var permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+      }
+      if (permission == LocationPermission.denied ||
+          permission == LocationPermission.deniedForever) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('请允许定位权限后重试')));
+        return;
+      }
+
+      final position = await Geolocator.getCurrentPosition(
+        locationSettings: const LocationSettings(
+          accuracy: LocationAccuracy.high,
+          timeLimit: Duration(seconds: 12),
+        ),
+      );
+      var address = '';
+      try {
+        final result = await _repository.reverseGeocodeLocation(
+          latitude: position.latitude,
+          longitude: position.longitude,
+        );
+        address = result['address']?.toString().trim() ?? '';
+      } catch (_) {
+        address = '';
+      }
+      if (!mounted) return;
+
+      setState(() {
+        _setSalonLocation(position.latitude, position.longitude);
+        if (address.isNotEmpty) {
+          _salon['address'] = address;
+          _salon['addressDetail'] = '';
+          _salon['addressRegion'] = {};
+        }
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            address.isEmpty ? '已重新获取定位，请确认店铺地址' : '已重新获取定位和店铺地址，请保存店铺信息',
+          ),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('重新定位失败: $e')));
+    } finally {
+      if (mounted) setState(() => _isGeocoding = false);
+    }
+  }
+
+  Map<String, double>? _salonLocation() {
+    final location = _salon['location'];
+    if (location is! Map) return null;
+
+    final latitude = double.tryParse(location['latitude']?.toString() ?? '');
+    final longitude = double.tryParse(location['longitude']?.toString() ?? '');
+    if (latitude == null || longitude == null) return null;
+    if (latitude < -90 ||
+        latitude > 90 ||
+        longitude < -180 ||
+        longitude > 180) {
+      return null;
+    }
+
+    return {'latitude': latitude, 'longitude': longitude};
+  }
+
+  void _setSalonLocation(double latitude, double longitude) {
+    _salon['location'] = {
+      'latitude': double.parse(latitude.toStringAsFixed(6)),
+      'longitude': double.parse(longitude.toStringAsFixed(6)),
+    };
   }
 
   String _coverImage() {
@@ -683,22 +886,23 @@ class _MerchantSalonScreenState extends State<MerchantSalonScreen> {
               color: AppTheme.white,
               border: Border(top: BorderSide(color: AppTheme.accentBeige)),
             ),
-            child: SizedBox(
-              width: double.infinity,
-              height: 48,
-              child: ElevatedButton.icon(
-                onPressed: _isSaving ? null : _saveSalon,
-                icon: _isSaving
-                    ? const SizedBox(
-                        width: 18,
-                        height: 18,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                          color: Colors.white,
-                        ),
-                      )
-                    : const Icon(Icons.save),
-                label: const Text('保存并同步到客户端详情页'),
+            child: PageWidth(
+              child: SizedBox(
+                height: 48,
+                child: ElevatedButton.icon(
+                  onPressed: _isSaving ? null : _saveSalon,
+                  icon: _isSaving
+                      ? const SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: Colors.white,
+                          ),
+                        )
+                      : const Icon(Icons.save),
+                  label: const Text('保存并提交审核'),
+                ),
               ),
             ),
           ),
@@ -709,8 +913,53 @@ class _MerchantSalonScreenState extends State<MerchantSalonScreen> {
 
   Widget _buildTabPage(Widget child) {
     return ListView(
-      padding: const EdgeInsets.all(20),
-      children: [child, const SizedBox(height: 16)],
+      padding: const EdgeInsets.symmetric(vertical: 20),
+      children: [
+        PageWidth(child: _buildContentReviewNotice()),
+        const SizedBox(height: 12),
+        PageWidth(child: child),
+        const SizedBox(height: 16),
+      ],
+    );
+  }
+
+  Widget _buildContentReviewNotice() {
+    final status = _salon['contentReviewStatus']?.toString() ?? 'pending';
+    final reason = _salon['contentRejectReason']?.toString().trim() ?? '';
+    final (icon, color, text) = switch (status) {
+      'approved' => (
+        Icons.check_circle_outline,
+        Colors.green,
+        '当前内容已通过审核，客户端正在展示这版内容。',
+      ),
+      'rejected' => (
+        Icons.report_gmailerrorred_outlined,
+        Colors.redAccent,
+        reason.isEmpty ? '当前内容审核未通过，请修改后重新提交。' : '当前内容审核未通过：$reason',
+      ),
+      _ => (
+        Icons.hourglass_top_outlined,
+        AppTheme.primaryPink,
+        '当前内容正在审核中，通过前客户端仍展示上一版已审核内容。',
+      ),
+    };
+
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: color.withValues(alpha: 0.35)),
+      ),
+      child: Row(
+        children: [
+          Icon(icon, color: color, size: 20),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(text, style: const TextStyle(color: AppTheme.textDark)),
+          ),
+        ],
+      ),
     );
   }
 
@@ -738,76 +987,7 @@ class _MerchantSalonScreenState extends State<MerchantSalonScreen> {
     );
   }
 
-  Map<String, dynamic> _addressRegion() {
-    final value = _salon['addressRegion'];
-    if (value is Map) return Map<String, dynamic>.from(value);
-    final region = <String, dynamic>{};
-    _salon['addressRegion'] = region;
-    return region;
-  }
-
-  String? _regionCode(String key) {
-    final value = _addressRegion()[key];
-    final text = value?.toString();
-    return text == null || text.isEmpty ? null : text;
-  }
-
-  String _regionName(List<RegionOption> options, String? code) {
-    if (code == null) return '';
-    return options
-        .firstWhere(
-          (option) => option.code == code,
-          orElse: () => const RegionOption(code: '', name: ''),
-        )
-        .name;
-  }
-
-  void _setAddressRegion({
-    String? provinceCode,
-    String? cityCode,
-    String? districtCode,
-  }) {
-    final provinceName = _regionName(chinaProvinces, provinceCode);
-    final cities = provinceCode == null
-        ? const <RegionOption>[]
-        : chinaRegionChildren[provinceCode] ?? const <RegionOption>[];
-    final cityName = _regionName(cities, cityCode);
-    final districts = cityCode == null
-        ? const <RegionOption>[]
-        : chinaRegionChildren[cityCode] ?? const <RegionOption>[];
-    final districtName = _regionName(districts, districtCode);
-
-    _salon['addressRegion'] = {
-      'provinceCode': provinceCode ?? '',
-      'provinceName': provinceName,
-      'cityCode': cityCode ?? '',
-      'cityName': cityName,
-      'districtCode': districtCode ?? '',
-      'districtName': districtName,
-    };
-    _syncAddressText();
-  }
-
   Widget _buildAddressFields() {
-    final rawProvinceCode = _regionCode('provinceCode');
-    final provinceCode =
-        chinaProvinces.any((option) => option.code == rawProvinceCode)
-        ? rawProvinceCode
-        : null;
-    final cityCode = _regionCode('cityCode');
-    final districtCode = _regionCode('districtCode');
-    final cities = provinceCode == null
-        ? const <RegionOption>[]
-        : chinaRegionChildren[provinceCode] ?? const <RegionOption>[];
-    final districts = cityCode == null
-        ? const <RegionOption>[]
-        : chinaRegionChildren[cityCode] ?? const <RegionOption>[];
-    final initialDetail = (_salon['addressDetail'] ?? '').toString().isNotEmpty
-        ? _salon['addressDetail'].toString()
-        : _addressRegion().isEmpty
-        ? (_salon['address'] ?? '').toString()
-        : '';
-
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
       padding: const EdgeInsets.all(12),
@@ -833,57 +1013,63 @@ class _MerchantSalonScreenState extends State<MerchantSalonScreen> {
             ],
           ),
           const SizedBox(height: 12),
-          _buildRegionDropdown(
-            label: '省 / 直辖市 / 自治区',
-            value: provinceCode,
-            options: chinaProvinces,
-            onChanged: (value) {
-              setState(() {
-                _setAddressRegion(provinceCode: value);
-              });
-            },
-          ),
-          _buildRegionDropdown(
-            label: '市 / 州 / 盟',
-            value: cities.any((option) => option.code == cityCode)
-                ? cityCode
-                : null,
-            options: cities,
-            onChanged: provinceCode == null
-                ? null
-                : (value) {
-                    setState(() {
-                      _setAddressRegion(
-                        provinceCode: provinceCode,
-                        cityCode: value,
-                      );
-                    });
-                  },
-          ),
-          _buildRegionDropdown(
-            label: '区 / 县',
-            value: districts.any((option) => option.code == districtCode)
-                ? districtCode
-                : null,
-            options: districts,
-            onChanged: cityCode == null
-                ? null
-                : (value) {
-                    setState(() {
-                      _setAddressRegion(
-                        provinceCode: provinceCode,
-                        cityCode: cityCode,
-                        districtCode: value,
-                      );
-                    });
-                  },
-          ),
-          _buildTextField('详细地址', initialDetail, (value) {
-            _salon['addressDetail'] = value;
-            _syncAddressText();
-          }),
+          _buildLocationCoordinatePicker(),
         ],
       ),
+    );
+  }
+
+  Widget _buildLocationCoordinatePicker() {
+    final location = _salonLocation();
+    final address = _salonAddressText();
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        TextFormField(
+          key: ValueKey(address),
+          initialValue: address,
+          maxLines: 2,
+          minLines: 1,
+          onChanged: (value) => _salon['address'] = value.trim(),
+          decoration: InputDecoration(
+            hintText: '请重新定位生成店铺地址，也可以手动修改',
+            filled: true,
+            fillColor: AppTheme.white,
+            border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+            enabledBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(8),
+              borderSide: const BorderSide(color: AppTheme.accentBeige),
+            ),
+            focusedBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(8),
+              borderSide: const BorderSide(color: AppTheme.primaryPink),
+            ),
+          ),
+        ),
+        const SizedBox(height: 10),
+        Row(
+          children: [
+            Expanded(
+              child: Text(
+                location == null ? '重新定位后会自动生成店铺地址。' : '定位和地址会随店铺信息一起保存。',
+                style: TextStyle(color: Colors.grey[600], fontSize: 12),
+              ),
+            ),
+            FilledButton.icon(
+              onPressed: _isGeocoding ? null : _refreshSalonLocation,
+              icon: _isGeocoding
+                  ? const SizedBox(
+                      width: 14,
+                      height: 14,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Icon(Icons.my_location_outlined, size: 18),
+              label: Text(_isGeocoding ? '定位中' : '重新定位'),
+            ),
+          ],
+        ),
+      ],
     );
   }
 
@@ -943,44 +1129,6 @@ class _MerchantSalonScreenState extends State<MerchantSalonScreen> {
             ),
           ),
         ],
-      ),
-    );
-  }
-
-  Widget _buildRegionDropdown({
-    required String label,
-    required String? value,
-    required List<RegionOption> options,
-    required ValueChanged<String?>? onChanged,
-  }) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 12),
-      child: DropdownButtonFormField<String>(
-        initialValue: value,
-        isExpanded: true,
-        items: options
-            .map(
-              (option) => DropdownMenuItem(
-                value: option.code,
-                child: Text(option.name, overflow: TextOverflow.ellipsis),
-              ),
-            )
-            .toList(),
-        onChanged: onChanged,
-        decoration: InputDecoration(
-          labelText: label,
-          filled: true,
-          fillColor: AppTheme.white,
-          border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
-          enabledBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(8),
-            borderSide: const BorderSide(color: AppTheme.accentBeige),
-          ),
-          focusedBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(8),
-            borderSide: const BorderSide(color: AppTheme.primaryPink),
-          ),
-        ),
       ),
     );
   }
@@ -1167,13 +1315,11 @@ class _MerchantSalonScreenState extends State<MerchantSalonScreen> {
                         Row(
                           children: [
                             Expanded(
-                              child: _buildTextField(
-                                '姓名',
-                                profile['name'],
-                                (value) {
-                                  profile['name'] = value;
-                                },
-                              ),
+                              child: _buildTextField('姓名', profile['name'], (
+                                value,
+                              ) {
+                                profile['name'] = value;
+                              }),
                             ),
                             const SizedBox(width: 12),
                             Expanded(child: _buildStaffRoleDropdown(profile)),
@@ -1189,11 +1335,15 @@ class _MerchantSalonScreenState extends State<MerchantSalonScreen> {
                           ],
                         ),
                         Expanded(
-                          child: _buildTextField('个人简介', profile['bio'], (
-                            value,
-                          ) {
-                            profile['bio'] = value;
-                          }, maxLines: null, expands: true),
+                          child: _buildTextField(
+                            '个人简介',
+                            profile['bio'],
+                            (value) {
+                              profile['bio'] = value;
+                            },
+                            maxLines: null,
+                            expands: true,
+                          ),
                         ),
                       ],
                     ),

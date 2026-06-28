@@ -1,5 +1,6 @@
 class BookingOrder {
   final String id;
+  final String orderNo;
   final String userId;
   final String userName;
   final String salonName;
@@ -16,11 +17,13 @@ class BookingOrder {
   final String? rejectReason;
   final bool reviewed;
   final Map<String, dynamic>? review;
+  final DateTime? completedAt;
   final DateTime createdAt;
   final DateTime updatedAt;
 
   BookingOrder({
     required this.id,
+    this.orderNo = '',
     required this.userId,
     required this.userName,
     required this.salonName,
@@ -37,6 +40,7 @@ class BookingOrder {
     this.rejectReason,
     this.reviewed = false,
     this.review,
+    this.completedAt,
     required this.createdAt,
     required this.updatedAt,
   });
@@ -44,6 +48,7 @@ class BookingOrder {
   factory BookingOrder.fromJson(Map<String, dynamic> json) {
     return BookingOrder(
       id: json['id'] as String,
+      orderNo: json['orderNo']?.toString() ?? (json['id'] as String),
       userId: json['userId'] as String,
       userName: json['userName'] as String,
       salonName: json['salonName'] as String,
@@ -62,6 +67,9 @@ class BookingOrder {
       review: json['review'] is Map
           ? Map<String, dynamic>.from(json['review'] as Map)
           : null,
+      completedAt: json['completedAt'] == null
+          ? null
+          : DateTime.parse(json['completedAt'] as String).toLocal(),
       createdAt: DateTime.parse(json['createdAt'] as String).toLocal(),
       updatedAt: DateTime.parse(json['updatedAt'] as String).toLocal(),
     );
