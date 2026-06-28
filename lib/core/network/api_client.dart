@@ -4,10 +4,7 @@ class ApiClient {
   ApiClient()
     : _dio = Dio(
         BaseOptions(
-          baseUrl: const String.fromEnvironment(
-            'API_BASE_URL',
-            defaultValue: 'http://localhost:3000/api',
-          ),
+          baseUrl: _apiBaseUrl,
           connectTimeout: const Duration(seconds: 5),
           receiveTimeout: const Duration(seconds: 3),
         ),
@@ -15,6 +12,10 @@ class ApiClient {
 
   final Dio _dio;
   static String? authToken;
+  static const String _apiBaseUrl = String.fromEnvironment(
+    'API_BASE_URL',
+    defaultValue: 'http://localhost:3000/api',
+  );
 
   Future<Response<dynamic>> request(
     String path, {

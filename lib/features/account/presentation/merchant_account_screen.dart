@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../core/theme/app_theme.dart';
+import '../../../core/widgets/page_width.dart';
 import '../../auth/data/merchant_session_store.dart';
 import '../../merchant/data/image_upload_picker.dart';
 import '../data/merchant_account_repository.dart';
@@ -150,99 +151,96 @@ class _MerchantAccountScreenState extends State<MerchantAccountScreen> {
         elevation: 0,
       ),
       body: SingleChildScrollView(
-        padding: const EdgeInsets.all(20),
-        child: Center(
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 720),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                _InfoPanel(user: user),
-                const SizedBox(height: 16),
-                _buildQualificationPanel(),
-                const SizedBox(height: 16),
-                Container(
-                  padding: const EdgeInsets.all(18),
-                  decoration: _panelDecoration(),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      const Text(
-                        '基础信息',
-                        style: TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
-                          color: AppTheme.textDark,
-                        ),
+        padding: const EdgeInsets.symmetric(vertical: 20),
+        child: PageWidth(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              _InfoPanel(user: user),
+              const SizedBox(height: 16),
+              _buildQualificationPanel(),
+              const SizedBox(height: 16),
+              Container(
+                padding: const EdgeInsets.all(18),
+                decoration: _panelDecoration(),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    const Text(
+                      '基础信息',
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                        color: AppTheme.textDark,
                       ),
-                      const SizedBox(height: 16),
+                    ),
+                    const SizedBox(height: 16),
+                    TextField(
+                      controller: _displayNameController,
+                      decoration: const InputDecoration(
+                        labelText: '显示名称',
+                        prefixIcon: Icon(Icons.badge_outlined),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    SwitchListTile(
+                      value: _changePassword,
+                      onChanged: (value) =>
+                          setState(() => _changePassword = value),
+                      title: const Text('修改登录密码'),
+                      contentPadding: EdgeInsets.zero,
+                    ),
+                    if (_changePassword) ...[
+                      const SizedBox(height: 8),
                       TextField(
-                        controller: _displayNameController,
+                        controller: _currentPasswordController,
+                        obscureText: true,
                         decoration: const InputDecoration(
-                          labelText: '显示名称',
-                          prefixIcon: Icon(Icons.badge_outlined),
+                          labelText: '当前密码',
+                          prefixIcon: Icon(Icons.lock_outline),
                         ),
                       ),
-                      const SizedBox(height: 16),
-                      SwitchListTile(
-                        value: _changePassword,
-                        onChanged: (value) =>
-                            setState(() => _changePassword = value),
-                        title: const Text('修改登录密码'),
-                        contentPadding: EdgeInsets.zero,
+                      const SizedBox(height: 12),
+                      TextField(
+                        controller: _newPasswordController,
+                        obscureText: true,
+                        decoration: const InputDecoration(
+                          labelText: '新密码',
+                          prefixIcon: Icon(Icons.password_outlined),
+                        ),
                       ),
-                      if (_changePassword) ...[
-                        const SizedBox(height: 8),
-                        TextField(
-                          controller: _currentPasswordController,
-                          obscureText: true,
-                          decoration: const InputDecoration(
-                            labelText: '当前密码',
-                            prefixIcon: Icon(Icons.lock_outline),
-                          ),
-                        ),
-                        const SizedBox(height: 12),
-                        TextField(
-                          controller: _newPasswordController,
-                          obscureText: true,
-                          decoration: const InputDecoration(
-                            labelText: '新密码',
-                            prefixIcon: Icon(Icons.password_outlined),
-                          ),
-                        ),
-                        const SizedBox(height: 12),
-                        TextField(
-                          controller: _confirmPasswordController,
-                          obscureText: true,
-                          decoration: const InputDecoration(
-                            labelText: '确认新密码',
-                            prefixIcon: Icon(Icons.verified_user_outlined),
-                          ),
-                        ),
-                      ],
-                      const SizedBox(height: 22),
-                      SizedBox(
-                        height: 48,
-                        child: ElevatedButton.icon(
-                          onPressed: _isSaving ? null : _save,
-                          icon: _isSaving
-                              ? const SizedBox(
-                                  width: 18,
-                                  height: 18,
-                                  child: CircularProgressIndicator(
-                                    strokeWidth: 2,
-                                    color: Colors.white,
-                                  ),
-                                )
-                              : const Icon(Icons.save_outlined),
-                          label: const Text('保存账号信息'),
+                      const SizedBox(height: 12),
+                      TextField(
+                        controller: _confirmPasswordController,
+                        obscureText: true,
+                        decoration: const InputDecoration(
+                          labelText: '确认新密码',
+                          prefixIcon: Icon(Icons.verified_user_outlined),
                         ),
                       ),
                     ],
-                  ),
+                    const SizedBox(height: 22),
+                    SizedBox(
+                      height: 48,
+                      child: ElevatedButton.icon(
+                        onPressed: _isSaving ? null : _save,
+                        icon: _isSaving
+                            ? const SizedBox(
+                                width: 18,
+                                height: 18,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  color: Colors.white,
+                                ),
+                              )
+                            : const Icon(Icons.save_outlined),
+                        label: const Text('保存账号信息'),
+                      ),
+                    ),
+                  ],
                 ),
-              ],
-            ),
+              ),
+            ],
           ),
         ),
       ),

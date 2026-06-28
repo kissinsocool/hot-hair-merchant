@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
 import '../../../core/theme/app_theme.dart';
+import '../../../core/widgets/page_width.dart';
 import '../../booking/data/booking_update_stream.dart';
 import '../../booking/data/order_repository.dart';
 import '../../booking/domain/booking_order.dart';
@@ -491,11 +492,11 @@ class _MerchantOrdersScreenState extends State<MerchantOrdersScreen> {
         color: AppTheme.primaryPink,
         onRefresh: _loadOrders,
         child: ListView(
-          padding: const EdgeInsets.all(20),
+          padding: const EdgeInsets.symmetric(vertical: 20),
           children: [
-            _buildSummary(pendingCount),
+            PageWidth(child: _buildSummary(pendingCount)),
             const SizedBox(height: 12),
-            _buildDateFilter(filteredOrders.length),
+            PageWidth(child: _buildDateFilter(filteredOrders.length)),
             const SizedBox(height: 18),
             if (_isLoading)
               const Padding(
@@ -505,14 +506,18 @@ class _MerchantOrdersScreenState extends State<MerchantOrdersScreen> {
                 ),
               )
             else if (_errorMessage.isNotEmpty)
-              _buildEmptyState('订单加载失败', _errorMessage)
+              PageWidth(child: _buildEmptyState('订单加载失败', _errorMessage))
             else if (filteredOrders.isEmpty)
-              _buildEmptyState(
-                _selectedDate == null ? '暂无订单' : '当天暂无订单',
-                _selectedDate == null ? '用户提交预约后会出现在这里' : '清除日期可查看全部订单',
+              PageWidth(
+                child: _buildEmptyState(
+                  _selectedDate == null ? '暂无订单' : '当天暂无订单',
+                  _selectedDate == null ? '用户提交预约后会出现在这里' : '清除日期可查看全部订单',
+                ),
               )
             else
-              ...filteredOrders.map(_buildOrderCard),
+              ...filteredOrders.map(
+                (order) => PageWidth(child: _buildOrderCard(order)),
+              ),
           ],
         ),
       ),
@@ -667,6 +672,7 @@ class _MerchantOrdersScreenState extends State<MerchantOrdersScreen> {
             ],
           ),
           const SizedBox(height: 12),
+          _buildInfoRow(Icons.confirmation_number, '订单号 ${order.orderNo}'),
           _buildInfoRow(
             Icons.person,
             '${order.userName} 预约 ${order.staffName}',

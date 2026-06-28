@@ -26,12 +26,14 @@ class BookingUpdateStream {
 
   void _connect() {
     if (_isConnecting || _channel != null) return;
+    const socketUrl = String.fromEnvironment(
+      'WS_BASE_URL',
+      defaultValue: 'ws://localhost:3000/ws',
+    );
 
     _isConnecting = true;
     try {
-      final channel = WebSocketChannel.connect(
-        Uri.parse('ws://localhost:3000/ws'),
-      );
+      final channel = WebSocketChannel.connect(Uri.parse(socketUrl));
       _channel = channel;
       _isConnecting = false;
 

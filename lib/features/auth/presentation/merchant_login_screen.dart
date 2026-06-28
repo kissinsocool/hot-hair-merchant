@@ -1,3 +1,4 @@
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 
 import '../../../core/theme/app_theme.dart';
@@ -51,11 +52,17 @@ class _MerchantLoginScreenState extends State<MerchantLoginScreen> {
       );
       if (!mounted) return;
       widget.onLoggedIn(session);
-    } catch (e) {
+    } on DioException catch (e) {
       if (!mounted) return;
+      final statusCode = e.response?.statusCode;
       setState(() {
-        _errorMessage = '账号或密码错误';
+        _errorMessage = statusCode == 401 || statusCode == 403
+            ? '账号或密码错误'
+            : '无法连接服务器，请检查网络或接口地址';
       });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _errorMessage = '登录失败，请稍后重试');
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
