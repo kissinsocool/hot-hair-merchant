@@ -1170,33 +1170,78 @@ class _MerchantSalonScreenState extends State<MerchantSalonScreen> {
                 ),
               ],
               onDelete: () => setState(() => _services.removeAt(index)),
-              children: [
-                _buildImageUploader(
-                  imageUrl: service['imageUrl']?.toString() ?? '',
-                  title: '服务效果图',
-                  emptyText: '尚未上传效果图',
-                  uploadedText: '已上传效果图',
-                  isUploading: _uploadingServiceIndex == index,
-                  onUpload: () => _uploadServiceImage(index),
-                  aspectRatio: 16 / 9,
-                ),
-                _buildTextField('套餐名称', service['name'], (value) {
-                  service['name'] = value;
-                }),
-                Row(
-                  children: [
-                    Expanded(child: _buildServicePriceField(service)),
-                    const SizedBox(width: 12),
-                    Expanded(child: _buildServiceDurationDropdown(service)),
-                  ],
-                ),
-                _buildTextField('备注', service['note'], (value) {
-                  service['note'] = value;
-                }, maxLines: 2),
-              ],
+              children: [_buildServiceSummaryRow(index, service)],
             );
           }),
       ],
+    );
+  }
+
+  Widget _buildServiceSummaryRow(int index, Map<String, dynamic> service) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final imageWidth = constraints.maxWidth * 0.25;
+        const summaryHeight = 238.0;
+        const imageModuleHeight = summaryHeight - 12;
+
+        return Padding(
+          padding: const EdgeInsets.only(bottom: 12),
+          child: SizedBox(
+            height: summaryHeight,
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                SizedBox(
+                  width: imageWidth,
+                  height: imageModuleHeight,
+                  child: _buildImageUploader(
+                    imageUrl: service['imageUrl']?.toString() ?? '',
+                    title: '服务效果图',
+                    emptyText: '尚未上传效果图',
+                    uploadedText: '已上传效果图',
+                    isUploading: _uploadingServiceIndex == index,
+                    onUpload: () => _uploadServiceImage(index),
+                    aspectRatio: 16 / 9,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: SizedBox(
+                    height: summaryHeight,
+                    child: Column(
+                      children: [
+                        _buildTextField('套餐名称', service['name'], (value) {
+                          service['name'] = value;
+                        }),
+                        Row(
+                          children: [
+                            Expanded(child: _buildServicePriceField(service)),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: _buildServiceDurationDropdown(service),
+                            ),
+                          ],
+                        ),
+                        Expanded(
+                          child: _buildTextField(
+                            '备注',
+                            service['note'],
+                            (value) {
+                              service['note'] = value;
+                            },
+                            maxLines: null,
+                            expands: true,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
     );
   }
 
@@ -1908,75 +1953,118 @@ class _MerchantSalonScreenState extends State<MerchantSalonScreen> {
           ),
           if (images.isNotEmpty) ...[
             const SizedBox(height: 12),
-            Wrap(
-              spacing: 10,
-              runSpacing: 10,
-              children: images.asMap().entries.map((entry) {
-                final index = entry.key;
-                final imageUrl = entry.value;
-                return SizedBox(
-                  width: 92,
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Stack(
+            SizedBox(
+              height: 120,
+              child: ReorderableListView.builder(
+                scrollDirection: Axis.horizontal,
+                buildDefaultDragHandles: false,
+                itemCount: images.length,
+                onReorderItem: (oldIndex, newIndex) {
+                  setState(() {
+                    final nextImages = [...images];
+                    final image = nextImages.removeAt(oldIndex);
+                    nextImages.insert(newIndex, image);
+                    _setPromoImages(nextImages);
+                  });
+                },
+                itemBuilder: (context, index) {
+                  final imageUrl = images[index];
+                  return Padding(
+                    key: ValueKey(imageUrl),
+                    padding: const EdgeInsets.only(right: 10),
+                    child: SizedBox(
+                      width: 92,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          ClipRRect(
-                            borderRadius: BorderRadius.circular(8),
-                            child: AspectRatio(
-                              aspectRatio: 1,
-                              child: Image.network(
-                                imageUrl,
-                                fit: BoxFit.cover,
-                                errorBuilder: (context, error, stackTrace) =>
-                                    Container(
-                                      color: AppTheme.bgCream,
-                                      child: const Icon(
-                                        Icons.broken_image,
-                                        color: Colors.grey,
+                          Stack(
+                            children: [
+                              ClipRRect(
+                                borderRadius: BorderRadius.circular(8),
+                                child: AspectRatio(
+                                  aspectRatio: 1,
+                                  child: Image.network(
+                                    imageUrl,
+                                    fit: BoxFit.cover,
+                                    errorBuilder:
+                                        (context, error, stackTrace) =>
+                                            Container(
+                                              color: AppTheme.bgCream,
+                                              child: const Icon(
+                                                Icons.broken_image,
+                                                color: Colors.grey,
+                                              ),
+                                            ),
+                                  ),
+                                ),
+                              ),
+                              Positioned(
+                                right: 4,
+                                top: 4,
+                                child: InkWell(
+                                  onTap: () {
+                                    setState(() {
+                                      final nextImages = [...images]
+                                        ..removeAt(index);
+                                      _setPromoImages(nextImages);
+                                    });
+                                  },
+                                  borderRadius: BorderRadius.circular(999),
+                                  child: Container(
+                                    width: 24,
+                                    height: 24,
+                                    decoration: BoxDecoration(
+                                      color: Colors.black.withValues(
+                                        alpha: 0.55,
                                       ),
+                                      shape: BoxShape.circle,
                                     ),
+                                    child: const Icon(
+                                      Icons.close,
+                                      color: Colors.white,
+                                      size: 16,
+                                    ),
+                                  ),
+                                ),
                               ),
-                            ),
+                              Positioned(
+                                right: 4,
+                                bottom: 4,
+                                child: ReorderableDragStartListener(
+                                  index: index,
+                                  child: Container(
+                                    width: 24,
+                                    height: 24,
+                                    decoration: BoxDecoration(
+                                      color: Colors.black.withValues(
+                                        alpha: 0.55,
+                                      ),
+                                      shape: BoxShape.circle,
+                                    ),
+                                    child: const Icon(
+                                      Icons.drag_indicator,
+                                      color: Colors.white,
+                                      size: 16,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ],
                           ),
-                          Positioned(
-                            right: 4,
-                            top: 4,
-                            child: InkWell(
-                              onTap: () {
-                                setState(() {
-                                  final nextImages = [...images]
-                                    ..removeAt(index);
-                                  _setPromoImages(nextImages);
-                                });
-                              },
-                              borderRadius: BorderRadius.circular(999),
-                              child: Container(
-                                width: 24,
-                                height: 24,
-                                decoration: BoxDecoration(
-                                  color: Colors.black.withValues(alpha: 0.55),
-                                  shape: BoxShape.circle,
-                                ),
-                                child: const Icon(
-                                  Icons.close,
-                                  color: Colors.white,
-                                  size: 16,
-                                ),
-                              ),
+                          const SizedBox(height: 5),
+                          Text(
+                            '推广图 ${index + 1}',
+                            style: TextStyle(
+                              color: Colors.grey[600],
+                              fontSize: 11,
                             ),
                           ),
                         ],
                       ),
-                      const SizedBox(height: 5),
-                      Text(
-                        '推广图 ${index + 1}',
-                        style: TextStyle(color: Colors.grey[600], fontSize: 11),
-                      ),
-                    ],
-                  ),
-                );
-              }).toList(),
+                    ),
+                  );
+                },
+              ),
             ),
           ],
         ],
