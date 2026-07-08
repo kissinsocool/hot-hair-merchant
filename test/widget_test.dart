@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hot_pepper_merchant/features/booking/domain/booking_order.dart';
+import 'package:hot_pepper_merchant/features/merchant/presentation/merchant_orders_screen.dart';
 
 void main() {
   test('parses booking timestamps as local time', () {
@@ -27,4 +28,59 @@ void main() {
       DateTime.parse('2026-06-21T03:30:00.000Z').toLocal(),
     );
   });
+
+  test('filters out accepted staff in the same time slot', () {
+    final slot = DateTime(2026, 6, 21, 11, 30);
+    final visibleStaff = availableStaffForOrder(
+      [
+        {'id': 'S1', 'name': '已占用'},
+        {'id': 'S2', 'name': '空闲'},
+      ],
+      [
+        _bookingOrder(id: 'BK1', staffId: 'S1', startTime: slot),
+        _bookingOrder(
+          id: 'BK2',
+          staffId: 'S2',
+          startTime: slot,
+          status: 'pending',
+        ),
+      ],
+      _bookingOrder(
+        id: 'BK3',
+        staffId: '',
+        staffName: '无需指定',
+        startTime: slot,
+        status: 'pending',
+      ),
+    );
+
+    expect(visibleStaff.map((staff) => staff['id']), ['S2']);
+  });
+}
+
+BookingOrder _bookingOrder({
+  required String id,
+  String staffId = 'S1',
+  String staffName = '测试发型师',
+  required DateTime startTime,
+  String status = 'accepted',
+}) {
+  return BookingOrder(
+    id: id,
+    userId: 'U1',
+    userName: '测试用户',
+    salonName: '测试门店',
+    staffId: staffId,
+    staffName: staffName,
+    serviceName: '剪发',
+    servicePrice: '¥600',
+    serviceDuration: '30分钟',
+    startTime: startTime,
+    status: status,
+    statusLabel: status,
+    userMessage: '',
+    merchantMessage: '',
+    createdAt: startTime,
+    updatedAt: startTime,
+  );
 }

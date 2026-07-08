@@ -1932,6 +1932,15 @@ class _MerchantSalonScreenState extends State<MerchantSalonScreen> {
                           : '已上传 ${images.length}/20 张推广图，为了更好的展示效果请上传16:9的图片',
                       style: TextStyle(color: Colors.grey[600], fontSize: 12),
                     ),
+                    if (images.isNotEmpty)
+                      const Text(
+                        '点击图片右下角可拖拽排序',
+                        style: TextStyle(
+                          color: AppTheme.primaryPink,
+                          fontSize: 12,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
                   ],
                 ),
               ),

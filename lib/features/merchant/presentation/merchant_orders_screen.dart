@@ -292,10 +292,21 @@ class _MerchantOrdersScreenState extends State<MerchantOrdersScreen> {
   }
 
   Future<String?> _showAssignStaffDialog(BookingOrder order) async {
+    final availableStaffOptions = availableStaffForOrder(
+      _staffOptions,
+      _orders,
+      order,
+    );
     if (_staffOptions.isEmpty) {
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(const SnackBar(content: Text('请先在店铺资料中添加理发师')));
+      return null;
+    }
+    if (availableStaffOptions.isEmpty) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('该时段暂无空闲理发师')));
       return null;
     }
 
@@ -374,11 +385,11 @@ class _MerchantOrdersScreenState extends State<MerchantOrdersScreen> {
                           constraints: const BoxConstraints(maxHeight: 420),
                           child: ListView.separated(
                             shrinkWrap: true,
-                            itemCount: _staffOptions.length,
+                            itemCount: availableStaffOptions.length,
                             separatorBuilder: (_, _) =>
                                 const SizedBox(height: 10),
                             itemBuilder: (context, index) {
-                              final staff = _staffOptions[index];
+                              final staff = availableStaffOptions[index];
                               final staffId = staff['id']?.toString() ?? '';
                               final selected = selectedStaffId == staffId;
                               return _AssignStaffOptionCard(
@@ -958,4 +969,25 @@ class _AssignStaffOptionCard extends StatelessWidget {
       ),
     );
   }
+}
+
+List<Map<String, dynamic>> availableStaffForOrder(
+  List<Map<String, dynamic>> staffOptions,
+  List<BookingOrder> orders,
+  BookingOrder order,
+) {
+  final busyStaffIds = orders
+      .where(
+        (item) =>
+            item.id != order.id &&
+            item.status == 'accepted' &&
+            item.startTime.isAtSameMomentAs(order.startTime),
+      )
+      .map((item) => item.staffId)
+      .where((id) => id.isNotEmpty)
+      .toSet();
+
+  return staffOptions
+      .where((staff) => !busyStaffIds.contains(staff['id']?.toString() ?? ''))
+      .toList();
 }
