@@ -95,7 +95,14 @@ class _MerchantAccountScreenState extends State<MerchantAccountScreen> {
   }
 
   Future<void> _pickAndUploadLicense() async {
-    final pickedImage = await pickImageForUpload();
+    PickedImage? pickedImage;
+    try {
+      pickedImage = await pickImageForUpload();
+    } catch (e) {
+      if (!mounted) return;
+      _showMessage('$e');
+      return;
+    }
     if (pickedImage == null) return;
 
     setState(() => _isUploadingLicense = true);

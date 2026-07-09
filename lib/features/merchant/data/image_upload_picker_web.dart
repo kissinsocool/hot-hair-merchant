@@ -3,6 +3,17 @@
 import 'dart:async';
 import 'dart:html' as html;
 
+const int _maxImageBytes = 5 * 1024 * 1024;
+const int _maxImageSide = 1920;
+const double _imageQuality = 0.8;
+
+class ImageUploadTooLargeException implements Exception {
+  const ImageUploadTooLargeException();
+
+  @override
+  String toString() => '图片压缩后仍超过5MB，请换一张更小的图片';
+}
+
 class PickedImage {
   const PickedImage({
     required this.fileName,
@@ -28,19 +39,10 @@ Future<PickedImage?> pickImageForUpload() async {
   final file = input.files?.isNotEmpty == true ? input.files!.first : null;
   if (file == null) return null;
 
-  final reader = html.FileReader();
-  reader.readAsDataUrl(file);
-  await reader.onLoad.first;
-
-  final result = reader.result;
-  if (result is! String) return null;
-
-  return _pickedImageFromDataUrl(file.name, result);
+  return _pickedImageFromFile(file);
 }
 
-Future<List<PickedImage>> pickImagesForUpload({
-  int limit = 5,
-}) async {
+Future<List<PickedImage>> pickImagesForUpload({int limit = 5}) async {
   final input = html.FileUploadInputElement()
     ..accept = 'image/*'
     ..multiple = true;
@@ -53,32 +55,44 @@ Future<List<PickedImage>> pickImagesForUpload({
 
   final pickedImages = <PickedImage>[];
   for (final file in files.take(limit)) {
-    final reader = html.FileReader();
-    reader.readAsDataUrl(file);
-    await reader.onLoad.first;
-
-    final result = reader.result;
-    if (result is String) {
-      pickedImages.add(await _pickedImageFromDataUrl(file.name, result));
-    }
+    pickedImages.add(await _pickedImageFromFile(file));
   }
 
   return pickedImages;
 }
 
-Future<PickedImage> _pickedImageFromDataUrl(
-  String fileName,
-  String dataUrl,
-) async {
-  final sourceImage = html.ImageElement(src: dataUrl);
+Future<PickedImage> _pickedImageFromFile(html.File file) async {
+  final sourceUrl = html.Url.createObjectUrl(file);
+  final sourceImage = html.ImageElement(src: sourceUrl);
   await sourceImage.onLoad.first;
 
   final sourceWidth = sourceImage.naturalWidth;
   final sourceHeight = sourceImage.naturalHeight;
+  final scale =
+      _maxImageSide /
+      [sourceWidth, sourceHeight].reduce((a, b) => a > b ? a : b);
+  final width = scale < 1 ? (sourceWidth * scale).round() : sourceWidth;
+  final height = scale < 1 ? (sourceHeight * scale).round() : sourceHeight;
+  final canvas = html.CanvasElement(width: width, height: height);
+  canvas.context2D.drawImageScaled(sourceImage, 0, 0, width, height);
+  html.Url.revokeObjectUrl(sourceUrl);
+
+  final dataUrl = canvas.toDataUrl('image/jpeg', _imageQuality);
+  if (_dataUrlBytes(dataUrl) > _maxImageBytes) {
+    throw const ImageUploadTooLargeException();
+  }
+
   return PickedImage(
-    fileName: fileName,
+    fileName: '${file.name.replaceFirst(RegExp(r'\.[^.]*$'), '')}.jpg',
     base64Data: dataUrl,
-    width: sourceWidth,
-    height: sourceHeight,
+    width: width,
+    height: height,
   );
+}
+
+int _dataUrlBytes(String dataUrl) {
+  final commaIndex = dataUrl.indexOf(',');
+  if (commaIndex == -1) return dataUrl.length;
+  final base64Length = dataUrl.length - commaIndex - 1;
+  return (base64Length * 3 / 4).ceil();
 }

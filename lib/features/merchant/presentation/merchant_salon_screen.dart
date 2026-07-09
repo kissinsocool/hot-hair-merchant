@@ -64,6 +64,7 @@ class _MerchantSalonScreenState extends State<MerchantSalonScreen> {
   final Map<int, DateTime> _absenceDatesByStaffIndex = {};
   final Map<int, String> _absenceStartTimesByStaffIndex = {};
   final Map<int, String> _absenceEndTimesByStaffIndex = {};
+  final TextEditingController _addressController = TextEditingController();
 
   @override
   void initState() {
@@ -80,6 +81,7 @@ class _MerchantSalonScreenState extends State<MerchantSalonScreen> {
   @override
   void dispose() {
     _bookingUpdateSubscription?.cancel();
+    _addressController.dispose();
     super.dispose();
   }
 
@@ -94,6 +96,7 @@ class _MerchantSalonScreenState extends State<MerchantSalonScreen> {
       if (!mounted) return;
       setState(() {
         _salon = salon;
+        _setSalonAddress(_salonAddressText());
         _services = _mapList(salon['services']);
         _staff = _mapList(salon['staff']);
         _isLoading = false;
@@ -185,6 +188,7 @@ class _MerchantSalonScreenState extends State<MerchantSalonScreen> {
       if (!mounted) return;
       setState(() {
         _salon = savedSalon;
+        _setSalonAddress(_salonAddressText());
         _services = _mapList(savedSalon['services']);
         _staff = _mapList(savedSalon['staff']);
       });
@@ -256,6 +260,14 @@ class _MerchantSalonScreenState extends State<MerchantSalonScreen> {
     return (_salon['address'] ?? '').toString().trim();
   }
 
+  void _setSalonAddress(String address) {
+    final trimmed = address.trim();
+    _salon['address'] = trimmed;
+    if (_addressController.text != trimmed) {
+      _addressController.text = trimmed;
+    }
+  }
+
   Future<void> _autoFillAddressFromCurrentLocation() async {
     if (_hasTriedAutoLocation || !mounted) return;
     _hasTriedAutoLocation = true;
@@ -292,7 +304,7 @@ class _MerchantSalonScreenState extends State<MerchantSalonScreen> {
 
       setState(() {
         _setSalonLocation(position.latitude, position.longitude);
-        _salon['address'] = address;
+        _setSalonAddress(address);
         _salon['addressDetail'] = '';
         _salon['addressRegion'] = {};
       });
@@ -351,7 +363,7 @@ class _MerchantSalonScreenState extends State<MerchantSalonScreen> {
       setState(() {
         _setSalonLocation(position.latitude, position.longitude);
         if (address.isNotEmpty) {
-          _salon['address'] = address;
+          _setSalonAddress(address);
           _salon['addressDetail'] = '';
           _salon['addressRegion'] = {};
         }
@@ -635,8 +647,34 @@ class _MerchantSalonScreenState extends State<MerchantSalonScreen> {
     });
   }
 
+  Future<PickedImage?> _pickImageOrShowError() async {
+    try {
+      return await pickImageForUpload();
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('$e')));
+      }
+      return null;
+    }
+  }
+
+  Future<List<PickedImage>> _pickImagesOrShowError({required int limit}) async {
+    try {
+      return await pickImagesForUpload(limit: limit);
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('$e')));
+      }
+      return [];
+    }
+  }
+
   Future<void> _uploadStaffAvatar(int index) async {
-    final pickedImage = await pickImageForUpload();
+    final pickedImage = await _pickImageOrShowError();
     if (pickedImage == null) return;
 
     setState(() => _uploadingStaffIndex = index);
@@ -661,7 +699,7 @@ class _MerchantSalonScreenState extends State<MerchantSalonScreen> {
   }
 
   Future<void> _uploadCoverImage() async {
-    final pickedImage = await pickImageForUpload();
+    final pickedImage = await _pickImageOrShowError();
     if (pickedImage == null) return;
 
     setState(() => _isUploadingCover = true);
@@ -695,7 +733,7 @@ class _MerchantSalonScreenState extends State<MerchantSalonScreen> {
       return;
     }
 
-    final pickedImages = await pickImagesForUpload(limit: remainCount);
+    final pickedImages = await _pickImagesOrShowError(limit: remainCount);
     if (pickedImages.isEmpty) return;
     if (!mounted) return;
 
@@ -725,7 +763,7 @@ class _MerchantSalonScreenState extends State<MerchantSalonScreen> {
   }
 
   Future<void> _uploadServiceImage(int index) async {
-    final pickedImage = await pickImageForUpload();
+    final pickedImage = await _pickImageOrShowError();
     if (pickedImage == null) return;
 
     setState(() => _uploadingServiceIndex = index);
@@ -1021,14 +1059,12 @@ class _MerchantSalonScreenState extends State<MerchantSalonScreen> {
 
   Widget _buildLocationCoordinatePicker() {
     final location = _salonLocation();
-    final address = _salonAddressText();
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         TextFormField(
-          key: ValueKey(address),
-          initialValue: address,
+          controller: _addressController,
           maxLines: 2,
           minLines: 1,
           onChanged: (value) => _salon['address'] = value.trim(),
