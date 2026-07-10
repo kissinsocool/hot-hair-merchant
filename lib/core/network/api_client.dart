@@ -14,7 +14,7 @@ class ApiClient {
   static String? authToken;
   static const String _apiBaseUrl = String.fromEnvironment(
     'API_BASE_URL',
-    defaultValue: 'http://localhost:3000/api',
+    defaultValue: 'http://182.92.129.180:3000/api',
   );
 
   Future<Response<dynamic>> request(

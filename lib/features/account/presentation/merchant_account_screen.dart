@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 
 import '../../../core/theme/app_theme.dart';
@@ -33,6 +35,8 @@ class _MerchantAccountScreenState extends State<MerchantAccountScreen> {
   bool _changePassword = false;
   Map<String, dynamic> _qualification = {};
   String _licenseUrl = '';
+  String _licenseFileName = '';
+  String _licenseBase64Data = '';
 
   @override
   void initState() {
@@ -104,15 +108,16 @@ class _MerchantAccountScreenState extends State<MerchantAccountScreen> {
       return;
     }
     if (pickedImage == null) return;
+    final selectedImage = pickedImage;
 
     setState(() => _isUploadingLicense = true);
     try {
-      final url = await _repository.uploadLicenseImage(
-        fileName: pickedImage.fileName,
-        base64Data: pickedImage.base64Data,
-      );
       if (!mounted) return;
-      setState(() => _licenseUrl = url);
+      setState(() {
+        _licenseUrl = selectedImage.base64Data;
+        _licenseFileName = selectedImage.fileName;
+        _licenseBase64Data = selectedImage.base64Data;
+      });
     } catch (_) {
       if (!mounted) return;
       _showMessage('营业执照上传失败');
@@ -128,9 +133,18 @@ class _MerchantAccountScreenState extends State<MerchantAccountScreen> {
     }
     setState(() => _isUploadingLicense = true);
     try {
-      final qualification = await _repository.submitQualification(_licenseUrl);
+      final qualification = await _repository.submitQualification(
+        licenseUrl: _licenseUrl,
+        fileName: _licenseFileName,
+        base64Data: _licenseBase64Data,
+      );
       if (!mounted) return;
-      setState(() => _qualification = qualification);
+      setState(() {
+        _qualification = qualification;
+        _licenseUrl = qualification['licenseUrl']?.toString() ?? _licenseUrl;
+        _licenseFileName = '';
+        _licenseBase64Data = '';
+      });
       _showMessage('营业执照已提交后台审核');
     } catch (_) {
       if (!mounted) return;
@@ -311,6 +325,11 @@ class _MerchantAccountScreenState extends State<MerchantAccountScreen> {
                               size: 54,
                               color: AppTheme.textDark,
                             ),
+                          )
+                        : _licenseUrl.startsWith('data:')
+                        ? Image.memory(
+                            base64Decode(_licenseUrl.split(',').last),
+                            fit: BoxFit.contain,
                           )
                         : Image.network(
                             _licenseUrl,

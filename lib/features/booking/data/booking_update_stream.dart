@@ -28,7 +28,7 @@ class BookingUpdateStream {
     if (_isConnecting || _channel != null) return;
     const socketUrl = String.fromEnvironment(
       'WS_BASE_URL',
-      defaultValue: 'ws://localhost:3000/ws',
+      defaultValue: 'ws://182.92.129.180:3000/ws',
     );
 
     _isConnecting = true;
