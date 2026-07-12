@@ -25,6 +25,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
   List<Map<String, dynamic>> _merchants = [];
   List<Map<String, dynamic>> _users = [];
   List<BookingOrder> _bookings = [];
+  List<Map<String, dynamic>> _userImages = [];
 
   @override
   void initState() {
@@ -40,6 +41,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
         _repository.fetchMerchants(),
         _repository.fetchUsers(),
         _repository.fetchBookings(),
+        _repository.fetchUserImages(),
       ]);
       if (!mounted) return;
       setState(() {
@@ -47,6 +49,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
         _merchants = results[1] as List<Map<String, dynamic>>;
         _users = results[2] as List<Map<String, dynamic>>;
         _bookings = results[3] as List<BookingOrder>;
+        _userImages = results[4] as List<Map<String, dynamic>>;
       });
     } finally {
       if (showLoading && mounted) setState(() => _isLoading = false);
@@ -56,7 +59,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
   @override
   Widget build(BuildContext context) {
     return DefaultTabController(
-      length: 4,
+      length: 5,
       child: Scaffold(
         backgroundColor: AppTheme.bgCream,
         appBar: AppBar(
@@ -83,6 +86,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
               Tab(icon: Icon(Icons.storefront_outlined), text: '商家账号'),
               Tab(icon: Icon(Icons.people_outline), text: '客户端用户'),
               Tab(icon: Icon(Icons.receipt_long_outlined), text: '订单'),
+              Tab(icon: Icon(Icons.image_search_outlined), text: '图片审核'),
             ],
           ),
         ),
@@ -105,6 +109,10 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                   ),
                   _UsersTab(users: _users),
                   _BookingsTab(bookings: _bookings, merchants: _merchants),
+                  _UserImagesTab(
+                    items: _userImages,
+                    onReview: _reviewUserImage,
+                  ),
                 ],
               ),
       ),
@@ -113,6 +121,23 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
 
   Future<void> _showCreateMerchantDialog() async {
     await _showMerchantDialog();
+  }
+
+  Future<void> _reviewUserImage(Map<String, dynamic> item, bool approve) async {
+    try {
+      await _repository.reviewUserImage(
+        bookingId: item['bookingId'].toString(),
+        type: item['type'].toString(),
+        url: item['url'].toString(),
+        approve: approve,
+      );
+      await _load();
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(_saveError(error))));
+    }
   }
 
   Future<void> _showEditMerchantDialog(Map<String, dynamic> merchant) async {
@@ -559,27 +584,21 @@ class _MerchantsTab extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final pending = merchants
-        .where(
-          (merchant) =>
-              merchant['licenseStatus'] == 'pending' ||
-              merchant['contentReviewStatus'] == 'pending',
-        )
-        .toList();
+    bool approved(Map<String, dynamic> merchant) =>
+        merchant['licenseStatus'] == 'approved' &&
+        merchant['contentReviewStatus'] == 'approved';
+
+    final pending = merchants.where((merchant) => !approved(merchant)).toList();
     final online = merchants
         .where(
           (merchant) =>
-              merchant['licenseStatus'] != 'pending' &&
-              merchant['contentReviewStatus'] != 'pending' &&
-              merchant['publishStatus'] == 'online',
+              approved(merchant) && merchant['publishStatus'] == 'online',
         )
         .toList();
     final offline = merchants
         .where(
           (merchant) =>
-              merchant['licenseStatus'] != 'pending' &&
-              merchant['contentReviewStatus'] != 'pending' &&
-              merchant['publishStatus'] != 'online',
+              approved(merchant) && merchant['publishStatus'] != 'online',
         )
         .toList();
 
@@ -634,6 +653,9 @@ class _MerchantsTab extends StatelessWidget {
   }
 
   Widget _buildMerchantCard(Map<String, dynamic> merchant) {
+    final licenseApproved = merchant['licenseStatus'] == 'approved';
+    final contentApproved = merchant['contentReviewStatus'] == 'approved';
+
     return Container(
       margin: const EdgeInsets.only(bottom: 10),
       padding: const EdgeInsets.all(14),
@@ -725,7 +747,9 @@ class _MerchantsTab extends StatelessWidget {
                 label: const Text('查看资质'),
               ),
               OutlinedButton.icon(
-                onPressed: () => onReviewLicense(merchant, true),
+                onPressed: licenseApproved
+                    ? null
+                    : () => onReviewLicense(merchant, true),
                 icon: const Icon(Icons.verified_outlined),
                 label: const Text('资质通过'),
               ),
@@ -740,7 +764,9 @@ class _MerchantsTab extends StatelessWidget {
                 label: const Text('查看内容'),
               ),
               OutlinedButton.icon(
-                onPressed: () => onReviewContent(merchant, true),
+                onPressed: contentApproved
+                    ? null
+                    : () => onReviewContent(merchant, true),
                 icon: const Icon(Icons.check_circle_outline),
                 label: const Text('内容通过'),
               ),
@@ -826,6 +852,104 @@ class _ContentLine extends StatelessWidget {
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),
       child: Text('$label：${text.isEmpty ? '-' : text}'),
+    );
+  }
+}
+
+class _UserImagesTab extends StatelessWidget {
+  const _UserImagesTab({required this.items, required this.onReview});
+
+  final List<Map<String, dynamic>> items;
+  final void Function(Map<String, dynamic> item, bool approve) onReview;
+
+  @override
+  Widget build(BuildContext context) {
+    if (items.isEmpty) {
+      return const Center(child: Text('暂无待审核图片'));
+    }
+
+    return GridView.builder(
+      padding: const EdgeInsets.all(20),
+      gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+        crossAxisCount: MediaQuery.of(context).size.width > 900 ? 3 : 2,
+        mainAxisSpacing: 14,
+        crossAxisSpacing: 14,
+        childAspectRatio: 0.78,
+      ),
+      itemCount: items.length,
+      itemBuilder: (context, index) {
+        final item = items[index];
+        final type = item['type'] == 'complaint' ? '投诉' : '评价';
+        final imageUrls = ((item['imageUrls'] as List?) ?? const [])
+            .map((url) => url.toString())
+            .where((url) => url.isNotEmpty)
+            .toList();
+        return Container(
+          padding: const EdgeInsets.all(12),
+          decoration: _panelDecoration(),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: GridView.count(
+                  crossAxisCount: imageUrls.length > 1 ? 2 : 1,
+                  mainAxisSpacing: 6,
+                  crossAxisSpacing: 6,
+                  physics: const NeverScrollableScrollPhysics(),
+                  children: imageUrls.isEmpty
+                      ? const [Center(child: Text('无图片'))]
+                      : [
+                          for (final url in imageUrls)
+                            ClipRRect(
+                              borderRadius: BorderRadius.circular(12),
+                              child: Image.network(
+                                url,
+                                fit: BoxFit.cover,
+                                errorBuilder: (context, error, stackTrace) =>
+                                    const Center(
+                                      child: Icon(Icons.broken_image),
+                                    ),
+                              ),
+                            ),
+                        ],
+                ),
+              ),
+              const SizedBox(height: 10),
+              Text('$type · ${item['salonName'] ?? '-'}'),
+              const SizedBox(height: 4),
+              Text(
+                '${item['userName'] ?? '-'} · ${item['serviceName'] ?? '-'}',
+                style: TextStyle(color: Colors.grey[700], fontSize: 12),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                item['content']?.toString() ?? '',
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(color: Colors.grey[700], fontSize: 12),
+              ),
+              const SizedBox(height: 10),
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton(
+                      onPressed: () => onReview(item, false),
+                      child: const Text('驳回'),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: FilledButton(
+                      onPressed: () => onReview(item, true),
+                      child: const Text('通过'),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        );
+      },
     );
   }
 }
