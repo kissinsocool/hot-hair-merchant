@@ -1,8 +1,39 @@
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:hot_pepper_merchant/features/auth/data/merchant_auth_repository.dart';
+import 'package:hot_pepper_merchant/features/auth/presentation/merchant_login_screen.dart';
 import 'package:hot_pepper_merchant/features/booking/domain/booking_order.dart';
 import 'package:hot_pepper_merchant/features/merchant/presentation/merchant_orders_screen.dart';
+import 'package:hot_pepper_merchant/main.dart';
 
 void main() {
+  testWidgets('keeps the admin entry off the merchant login screen', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: MerchantLoginScreen(
+          repository: MerchantAuthRepository(),
+          onLoggedIn: (_) {},
+        ),
+      ),
+    );
+
+    expect(find.text('商家登录'), findsOneWidget);
+    expect(find.text('后台'), findsNothing);
+    expect(find.byType(SegmentedButton<bool>), findsNothing);
+  });
+
+  testWidgets('shows admin login only for the admin portal', (tester) async {
+    await tester.pumpWidget(const MerchantApp());
+    await tester.pumpAndSettle();
+    tester.state<NavigatorState>(find.byType(Navigator)).pushNamed('/admin');
+    await tester.pumpAndSettle();
+
+    expect(find.text('后台登录'), findsOneWidget);
+    expect(find.text('商家登录'), findsNothing);
+  });
+
   test('parses booking timestamps as local time', () {
     final order = BookingOrder.fromJson({
       'id': 'BK1',

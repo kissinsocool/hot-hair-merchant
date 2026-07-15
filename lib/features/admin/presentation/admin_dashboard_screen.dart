@@ -6,6 +6,7 @@ import 'package:intl/intl.dart';
 
 import '../../../core/theme/app_theme.dart';
 import '../../booking/domain/booking_order.dart';
+import '../../merchant/data/image_upload_picker.dart';
 import '../data/admin_repository.dart';
 
 class AdminDashboardScreen extends StatefulWidget {
@@ -26,6 +27,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
   List<Map<String, dynamic>> _users = [];
   List<BookingOrder> _bookings = [];
   List<Map<String, dynamic>> _userImages = [];
+  Map<String, dynamic> _ad = {};
 
   @override
   void initState() {
@@ -42,6 +44,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
         _repository.fetchUsers(),
         _repository.fetchBookings(),
         _repository.fetchUserImages(),
+        _repository.fetchAd(),
       ]);
       if (!mounted) return;
       setState(() {
@@ -50,6 +53,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
         _users = results[2] as List<Map<String, dynamic>>;
         _bookings = results[3] as List<BookingOrder>;
         _userImages = results[4] as List<Map<String, dynamic>>;
+        _ad = results[5] as Map<String, dynamic>;
       });
     } finally {
       if (showLoading && mounted) setState(() => _isLoading = false);
@@ -59,7 +63,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
   @override
   Widget build(BuildContext context) {
     return DefaultTabController(
-      length: 5,
+      length: 6,
       child: Scaffold(
         backgroundColor: AppTheme.bgCream,
         appBar: AppBar(
@@ -87,6 +91,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
               Tab(icon: Icon(Icons.people_outline), text: '客户端用户'),
               Tab(icon: Icon(Icons.receipt_long_outlined), text: '订单'),
               Tab(icon: Icon(Icons.image_search_outlined), text: '图片审核'),
+              Tab(icon: Icon(Icons.campaign_outlined), text: '广告位'),
             ],
           ),
         ),
@@ -113,6 +118,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                     items: _userImages,
                     onReview: _reviewUserImage,
                   ),
+                  _AdTab(config: _ad, onSave: _saveAd),
                 ],
               ),
       ),
@@ -121,6 +127,23 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
 
   Future<void> _showCreateMerchantDialog() async {
     await _showMerchantDialog();
+  }
+
+  Future<Map<String, dynamic>> _saveAd({
+    required String imageUrl,
+    required String link,
+    required bool enabled,
+    PickedImage? image,
+  }) async {
+    final saved = await _repository.saveAd(
+      imageUrl: imageUrl,
+      link: link,
+      enabled: enabled,
+      fileName: image?.fileName,
+      base64Data: image?.base64Data,
+    );
+    if (mounted) setState(() => _ad = saved);
+    return saved;
   }
 
   Future<void> _reviewUserImage(Map<String, dynamic> item, bool approve) async {
@@ -400,11 +423,13 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
             children: [
               TextField(
                 controller: usernameController,
+                maxLength: 100,
                 decoration: const InputDecoration(labelText: '登录账号'),
               ),
               const SizedBox(height: 12),
               TextField(
                 controller: salonIdController,
+                maxLength: 100,
                 decoration: const InputDecoration(labelText: '店铺ID'),
               ),
               const SizedBox(height: 12),
@@ -417,6 +442,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
               TextField(
                 controller: passwordController,
                 obscureText: true,
+                maxLength: 128,
                 decoration: InputDecoration(
                   labelText: isEditing ? '重置密码（可不填）' : '初始密码',
                 ),
@@ -852,6 +878,191 @@ class _ContentLine extends StatelessWidget {
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),
       child: Text('$label：${text.isEmpty ? '-' : text}'),
+    );
+  }
+}
+
+typedef _SaveAd =
+    Future<Map<String, dynamic>> Function({
+      required String imageUrl,
+      required String link,
+      required bool enabled,
+      PickedImage? image,
+    });
+
+class _AdTab extends StatefulWidget {
+  const _AdTab({required this.config, required this.onSave});
+
+  final Map<String, dynamic> config;
+  final _SaveAd onSave;
+
+  @override
+  State<_AdTab> createState() => _AdTabState();
+}
+
+class _AdTabState extends State<_AdTab> {
+  late final TextEditingController _linkController;
+  PickedImage? _image;
+  late String _imageUrl;
+  late bool _enabled;
+  bool _saving = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _imageUrl = widget.config['imageUrl']?.toString() ?? '';
+    _enabled = widget.config['enabled'] != false;
+    _linkController = TextEditingController(
+      text: widget.config['link']?.toString() ?? '/pages/ad/ad',
+    );
+  }
+
+  @override
+  void didUpdateWidget(covariant _AdTab oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.config == widget.config) return;
+    _imageUrl = widget.config['imageUrl']?.toString() ?? '';
+    _enabled = widget.config['enabled'] != false;
+    _linkController.text = widget.config['link']?.toString() ?? '/pages/ad/ad';
+  }
+
+  @override
+  void dispose() {
+    _linkController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _pickImage() async {
+    try {
+      final image = await pickImageForUpload();
+      if (image != null && mounted) setState(() => _image = image);
+    } catch (error) {
+      if (mounted) _showMessage('$error');
+    }
+  }
+
+  Future<void> _save() async {
+    final link = _linkController.text.trim();
+    if (!link.startsWith('/pages/')) {
+      _showMessage('跳转链接必须是 /pages/... 小程序页面路径');
+      return;
+    }
+    if (_enabled && _image == null && _imageUrl.isEmpty) {
+      _showMessage('请先上传广告图片');
+      return;
+    }
+
+    setState(() => _saving = true);
+    try {
+      final saved = await widget.onSave(
+        imageUrl: _imageUrl,
+        link: link,
+        enabled: _enabled,
+        image: _image,
+      );
+      if (!mounted) return;
+      setState(() {
+        _image = null;
+        _imageUrl = saved['imageUrl']?.toString() ?? '';
+      });
+      _showMessage('广告位已保存');
+    } catch (error) {
+      if (!mounted) return;
+      final data = error is DioException ? error.response?.data : null;
+      _showMessage(
+        data is Map && data['message'] != null
+            ? data['message'].toString()
+            : '保存失败：$error',
+      );
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  void _showMessage(String message) {
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(message)));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(20),
+      child: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 760),
+          child: Container(
+            padding: const EdgeInsets.all(20),
+            decoration: _panelDecoration(),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('顶部广告位', style: Theme.of(context).textTheme.titleLarge),
+                const SizedBox(height: 8),
+                const Text('用于小程序首页和店铺详情页，建议上传约 5:1 的横幅图片。'),
+                const SizedBox(height: 20),
+                if (_imageUrl.isNotEmpty)
+                  AspectRatio(
+                    aspectRatio: 5,
+                    child: Image.network(
+                      _imageUrl,
+                      fit: BoxFit.cover,
+                      errorBuilder: (_, _, _) => const Center(
+                        child: Icon(Icons.broken_image_outlined, size: 48),
+                      ),
+                    ),
+                  ),
+                if (_imageUrl.isNotEmpty) const SizedBox(height: 12),
+                OutlinedButton.icon(
+                  onPressed: _saving ? null : _pickImage,
+                  icon: const Icon(Icons.upload_outlined),
+                  label: Text(_image == null ? '选择广告图片' : '重新选择图片'),
+                ),
+                if (_image != null)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 8),
+                    child: Text(
+                      '${_image!.fileName} · ${_image!.width}×${_image!.height}',
+                    ),
+                  ),
+                const SizedBox(height: 20),
+                TextField(
+                  controller: _linkController,
+                  decoration: const InputDecoration(
+                    labelText: '点击后跳转链接',
+                    hintText: '/pages/ad/ad',
+                    helperText: '填写小程序内部页面路径，可带查询参数',
+                  ),
+                ),
+                const SizedBox(height: 12),
+                SwitchListTile(
+                  contentPadding: EdgeInsets.zero,
+                  title: const Text('显示广告位'),
+                  value: _enabled,
+                  onChanged: _saving
+                      ? null
+                      : (value) => setState(() => _enabled = value),
+                ),
+                const SizedBox(height: 16),
+                SizedBox(
+                  width: double.infinity,
+                  child: FilledButton.icon(
+                    onPressed: _saving ? null : _save,
+                    icon: _saving
+                        ? const SizedBox.square(
+                            dimension: 18,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : const Icon(Icons.save_outlined),
+                    label: Text(_saving ? '保存中...' : '保存广告位'),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
     );
   }
 }

@@ -99,7 +99,10 @@ class _MerchantOrdersScreenState extends State<MerchantOrdersScreen> {
   }
 
   Future<void> _updateOrder(BookingOrder order, bool accept) async {
-    if (accept && order.staffName == '无需指定') {
+    if (accept &&
+        (order.isNoPreference ||
+            order.staffId.isEmpty ||
+            order.staffName == '无需指定')) {
       final assignedStaffId = await _showAssignStaffDialog(order);
       if (assignedStaffId == null) return;
       await _updateOrderStatus(
@@ -230,6 +233,7 @@ class _MerchantOrdersScreenState extends State<MerchantOrdersScreen> {
                     TextField(
                       controller: replyController,
                       maxLines: 3,
+                      maxLength: 1000,
                       decoration: const InputDecoration(
                         labelText: '商家回复',
                         hintText: '感谢您的评价，期待再次为您服务',

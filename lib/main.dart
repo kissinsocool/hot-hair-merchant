@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter_web_plugins/url_strategy.dart';
 
 import 'core/theme/app_theme.dart';
 import 'features/account/presentation/merchant_account_screen.dart';
@@ -13,6 +14,7 @@ import 'features/merchant/presentation/merchant_orders_screen.dart';
 import 'features/merchant/presentation/merchant_salon_screen.dart';
 
 void main() {
+  usePathUrlStrategy();
   runApp(const MerchantApp());
 }
 
@@ -25,13 +27,18 @@ class MerchantApp extends StatelessWidget {
       title: 'Hot Pepper Merchant',
       debugShowCheckedModeBanner: false,
       theme: AppTheme.lightTheme,
-      home: const MerchantAuthGate(),
+      routes: {
+        '/': (_) => const MerchantAuthGate(),
+        '/admin': (_) => const MerchantAuthGate(admin: true),
+      },
     );
   }
 }
 
 class MerchantAuthGate extends StatefulWidget {
-  const MerchantAuthGate({super.key});
+  const MerchantAuthGate({super.key, this.admin = false});
+
+  final bool admin;
 
   @override
   State<MerchantAuthGate> createState() => _MerchantAuthGateState();
@@ -50,7 +57,11 @@ class _MerchantAuthGateState extends State<MerchantAuthGate> {
   }
 
   Future<void> _restoreSession() async {
-    final session = await _repository.restoreSession();
+    var session = await _repository.restoreSession();
+    if (session != null && (session.user['role'] == 'admin') != widget.admin) {
+      await _repository.logout();
+      session = null;
+    }
     if (!mounted) return;
     setState(() {
       _session = session;
@@ -78,6 +89,7 @@ class _MerchantAuthGateState extends State<MerchantAuthGate> {
     if (_session == null) {
       return MerchantLoginScreen(
         repository: _repository,
+        admin: widget.admin,
         onLoggedIn: (session) => setState(() => _session = session),
       );
     }

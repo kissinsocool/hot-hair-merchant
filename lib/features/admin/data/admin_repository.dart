@@ -9,11 +9,35 @@ class AdminRepository {
     return Map<String, dynamic>.from(response.data as Map);
   }
 
+  Future<Map<String, dynamic>> fetchAd() async {
+    final response = await _apiClient.request('/admin/ad');
+    return Map<String, dynamic>.from(response.data as Map);
+  }
+
+  Future<Map<String, dynamic>> saveAd({
+    required String imageUrl,
+    required String link,
+    required bool enabled,
+    String? fileName,
+    String? base64Data,
+  }) async {
+    final response = await _apiClient.request(
+      '/admin/ad',
+      method: 'PATCH',
+      data: {
+        'imageUrl': imageUrl,
+        'link': link,
+        'enabled': enabled,
+        'fileName': ?fileName,
+        'data': ?base64Data,
+      },
+    );
+    return Map<String, dynamic>.from(response.data as Map);
+  }
+
   Future<List<Map<String, dynamic>>> fetchMerchants() async {
-    final response = await _apiClient.request('/admin/merchants');
-    return (response.data as List<dynamic>)
-        .map((item) => Map<String, dynamic>.from(item as Map))
-        .toList();
+    final data = await _apiClient.requestAllPages('/admin/merchants');
+    return data.map((item) => Map<String, dynamic>.from(item as Map)).toList();
   }
 
   Future<Map<String, dynamic>> createMerchant({
@@ -103,15 +127,13 @@ class AdminRepository {
   }
 
   Future<List<Map<String, dynamic>>> fetchUsers() async {
-    final response = await _apiClient.request('/admin/users');
-    return (response.data as List<dynamic>)
-        .map((item) => Map<String, dynamic>.from(item as Map))
-        .toList();
+    final data = await _apiClient.requestAllPages('/admin/users');
+    return data.map((item) => Map<String, dynamic>.from(item as Map)).toList();
   }
 
   Future<List<BookingOrder>> fetchBookings() async {
-    final response = await _apiClient.request('/admin/bookings');
-    return (response.data as List<dynamic>)
+    final data = await _apiClient.requestAllPages('/admin/bookings');
+    return data
         .map(
           (item) =>
               BookingOrder.fromJson(Map<String, dynamic>.from(item as Map)),
@@ -120,10 +142,11 @@ class AdminRepository {
   }
 
   Future<List<Map<String, dynamic>>> fetchUserImages() async {
-    final response = await _apiClient.request('/admin/user-images');
-    return (response.data as List<dynamic>)
-        .map((item) => Map<String, dynamic>.from(item as Map))
-        .toList();
+    final data = await _apiClient.requestAllPages(
+      '/admin/user-images',
+      useTotal: false,
+    );
+    return data.map((item) => Map<String, dynamic>.from(item as Map)).toList();
   }
 
   Future<void> reviewUserImage({

@@ -5,11 +5,10 @@ class OrderRepository {
   final ApiClient _apiClient = ApiClient();
 
   Future<List<BookingOrder>> fetchMerchantBookings({String? status}) async {
-    final path = status == null
-        ? '/merchant/bookings'
-        : '/merchant/bookings?status=$status';
-    final response = await _apiClient.request(path);
-    final data = response.data as List<dynamic>;
+    final data = await _apiClient.requestAllPages(
+      '/merchant/bookings',
+      queryParameters: {'status': ?status},
+    );
 
     return data
         .map((item) => BookingOrder.fromJson(Map<String, dynamic>.from(item)))

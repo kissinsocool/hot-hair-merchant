@@ -10,10 +10,12 @@ class MerchantLoginScreen extends StatefulWidget {
     super.key,
     required this.repository,
     required this.onLoggedIn,
+    this.admin = false,
   });
 
   final MerchantAuthRepository repository;
   final ValueChanged<MerchantSession> onLoggedIn;
+  final bool admin;
 
   @override
   State<MerchantLoginScreen> createState() => _MerchantLoginScreenState();
@@ -21,12 +23,11 @@ class MerchantLoginScreen extends StatefulWidget {
 
 class _MerchantLoginScreenState extends State<MerchantLoginScreen> {
   final _formKey = GlobalKey<FormState>();
-  final _usernameController = TextEditingController(text: 'merchant');
-  final _passwordController = TextEditingController(text: '123456');
+  final _usernameController = TextEditingController();
+  final _passwordController = TextEditingController();
 
   bool _isLoading = false;
   bool _obscurePassword = true;
-  bool _isAdminLogin = false;
   String _errorMessage = '';
 
   @override
@@ -48,9 +49,15 @@ class _MerchantLoginScreenState extends State<MerchantLoginScreen> {
       final session = await widget.repository.login(
         username: _usernameController.text.trim(),
         password: _passwordController.text,
-        admin: _isAdminLogin,
+        admin: widget.admin,
       );
       if (!mounted) return;
+      if ((session.user['role'] == 'admin') != widget.admin) {
+        await widget.repository.logout();
+        if (!mounted) return;
+        setState(() => _errorMessage = '该账号无权登录此入口');
+        return;
+      }
       widget.onLoggedIn(session);
     } on DioException catch (e) {
       if (!mounted) return;
@@ -97,16 +104,18 @@ class _MerchantLoginScreenState extends State<MerchantLoginScreen> {
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    const Icon(
-                      Icons.storefront,
+                    Icon(
+                      widget.admin
+                          ? Icons.admin_panel_settings
+                          : Icons.storefront,
                       color: AppTheme.primaryPink,
                       size: 44,
                     ),
                     const SizedBox(height: 14),
-                    const Text(
-                      '商家登录',
+                    Text(
+                      widget.admin ? '后台登录' : '商家登录',
                       textAlign: TextAlign.center,
-                      style: TextStyle(
+                      style: const TextStyle(
                         color: AppTheme.textDark,
                         fontSize: 24,
                         fontWeight: FontWeight.bold,
@@ -114,40 +123,11 @@ class _MerchantLoginScreenState extends State<MerchantLoginScreen> {
                     ),
                     const SizedBox(height: 6),
                     Text(
-                      '登录后管理店铺信息、理发师和订单',
+                      widget.admin ? '登录后进行平台管理' : '登录后管理店铺信息、理发师和订单',
                       textAlign: TextAlign.center,
                       style: TextStyle(color: Colors.grey[600]),
                     ),
                     const SizedBox(height: 24),
-                    SegmentedButton<bool>(
-                      segments: const [
-                        ButtonSegment(
-                          value: false,
-                          icon: Icon(Icons.storefront_outlined),
-                          label: Text('商家'),
-                        ),
-                        ButtonSegment(
-                          value: true,
-                          icon: Icon(Icons.admin_panel_settings_outlined),
-                          label: Text('后台'),
-                        ),
-                      ],
-                      selected: {_isAdminLogin},
-                      onSelectionChanged: (selection) {
-                        final isAdmin = selection.first;
-                        setState(() {
-                          _isAdminLogin = isAdmin;
-                          _usernameController.text = isAdmin
-                              ? 'admin'
-                              : 'merchant';
-                          _passwordController.text = isAdmin
-                              ? 'admin123456'
-                              : '123456';
-                          _errorMessage = '';
-                        });
-                      },
-                    ),
-                    const SizedBox(height: 18),
                     TextFormField(
                       controller: _usernameController,
                       textInputAction: TextInputAction.next,

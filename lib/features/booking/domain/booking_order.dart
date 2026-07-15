@@ -6,6 +6,7 @@ class BookingOrder {
   final String salonName;
   final String staffId;
   final String staffName;
+  final bool isNoPreference;
   final String serviceName;
   final String servicePrice;
   final String serviceDuration;
@@ -29,6 +30,7 @@ class BookingOrder {
     required this.salonName,
     required this.staffId,
     required this.staffName,
+    this.isNoPreference = false,
     required this.serviceName,
     required this.servicePrice,
     required this.serviceDuration,
@@ -54,6 +56,7 @@ class BookingOrder {
       salonName: json['salonName'] as String,
       staffId: json['staffId'] as String? ?? '',
       staffName: json['staffName'] as String,
+      isNoPreference: json['isNoPreference'] as bool? ?? false,
       serviceName: json['serviceName'] as String,
       servicePrice: json['servicePrice'] as String? ?? '',
       serviceDuration: json['serviceDuration'] as String? ?? '',
