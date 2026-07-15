@@ -984,7 +984,7 @@ List<Map<String, dynamic>> availableStaffForOrder(
       .where(
         (item) =>
             item.id != order.id &&
-            item.status == 'accepted' &&
+            (item.status == 'pending' || item.status == 'accepted') &&
             item.startTime.isAtSameMomentAs(order.startTime),
       )
       .map((item) => item.staffId)

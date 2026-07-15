@@ -60,7 +60,7 @@ void main() {
     );
   });
 
-  test('filters out accepted staff in the same time slot', () {
+  test('filters out pending and accepted staff in the same time slot', () {
     final slot = DateTime(2026, 6, 21, 11, 30);
     final visibleStaff = availableStaffForOrder(
       [
@@ -85,7 +85,7 @@ void main() {
       ),
     );
 
-    expect(visibleStaff.map((staff) => staff['id']), ['S2']);
+    expect(visibleStaff, isEmpty);
   });
 }
 
