@@ -87,6 +87,39 @@ void main() {
 
     expect(visibleStaff, isEmpty);
   });
+
+  test('keeps the current booking slot enabled while disabling conflicts', () {
+    final startTime = DateTime.now().add(const Duration(days: 1));
+    final order = _bookingOrder(id: 'BK1', staffId: 'S1', startTime: startTime);
+    expect(
+      isBookingSlotEnabled(
+        {'startTime': startTime.toIso8601String(), 'isAvailable': false},
+        order,
+        startTime,
+      ),
+      isTrue,
+    );
+    expect(
+      isBookingSlotEnabled(
+        {
+          'startTime': startTime
+              .add(const Duration(minutes: 30))
+              .toIso8601String(),
+          'isAvailable': false,
+        },
+        order,
+        startTime,
+      ),
+      isFalse,
+    );
+  });
+
+  test('groups canceled and rejected orders in the canceled tab', () {
+    final canceledStatuses = merchantOrderStatusTabs[3].$2;
+
+    expect(canceledStatuses, containsAll(['canceled', 'rejected']));
+    expect(canceledStatuses, isNot(contains('completed')));
+  });
 }
 
 BookingOrder _bookingOrder({

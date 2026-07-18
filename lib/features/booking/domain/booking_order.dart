@@ -3,6 +3,7 @@ class BookingOrder {
   final String orderNo;
   final String userId;
   final String userName;
+  final String salonId;
   final String salonName;
   final String staffId;
   final String staffName;
@@ -27,6 +28,7 @@ class BookingOrder {
     this.orderNo = '',
     required this.userId,
     required this.userName,
+    this.salonId = '',
     required this.salonName,
     required this.staffId,
     required this.staffName,
@@ -53,6 +55,7 @@ class BookingOrder {
       orderNo: json['orderNo']?.toString() ?? (json['id'] as String),
       userId: json['userId'] as String,
       userName: json['userName'] as String,
+      salonId: json['salonId']?.toString() ?? '',
       salonName: json['salonName'] as String,
       staffId: json['staffId'] as String? ?? '',
       staffName: json['staffName'] as String,

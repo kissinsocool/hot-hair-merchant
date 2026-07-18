@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_web_plugins/url_strategy.dart';
 
 import 'core/theme/app_theme.dart';
@@ -27,6 +28,9 @@ class MerchantApp extends StatelessWidget {
       title: 'Hot Pepper Merchant',
       debugShowCheckedModeBanner: false,
       theme: AppTheme.lightTheme,
+      locale: const Locale('zh', 'CN'),
+      localizationsDelegates: GlobalMaterialLocalizations.delegates,
+      supportedLocales: const [Locale('zh', 'CN')],
       routes: {
         '/': (_) => const MerchantAuthGate(),
         '/admin': (_) => const MerchantAuthGate(admin: true),

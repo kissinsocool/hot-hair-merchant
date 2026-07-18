@@ -991,7 +991,7 @@ class _MerchantSalonScreenState extends State<MerchantSalonScreen> {
               unselectedLabelColor: AppTheme.textDark,
               indicatorColor: AppTheme.primaryPink,
               tabs: [
-                Tab(icon: Icon(Icons.storefront), text: '店铺简介'),
+                Tab(icon: Icon(Icons.storefront), text: '店铺信息'),
                 Tab(icon: Icon(Icons.spa), text: '服务套餐'),
                 Tab(icon: Icon(Icons.badge), text: '理发师'),
               ],
@@ -1121,7 +1121,118 @@ class _MerchantSalonScreenState extends State<MerchantSalonScreen> {
           maxLength: 5000,
         ),
         _buildCoverImagesUploader(),
+        _buildClosedDatesSection(),
       ],
+    );
+  }
+
+  String _dateKey(DateTime date) =>
+      '${date.year.toString().padLeft(4, '0')}-'
+      '${date.month.toString().padLeft(2, '0')}-'
+      '${date.day.toString().padLeft(2, '0')}';
+
+  List<String> _closedDates() =>
+      ((_salon['closedDates'] as List?) ?? const [])
+          .map((date) => date.toString())
+          .where((date) => RegExp(r'^\d{4}-\d{2}-\d{2}$').hasMatch(date))
+          .toSet()
+          .toList()
+        ..sort();
+
+  Future<void> _addClosedDates() async {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final lastDayOfTargetMonth = DateTime(today.year, today.month + 3, 0).day;
+    final lastDate = DateTime(
+      today.year,
+      today.month + 2,
+      today.day > lastDayOfTargetMonth ? lastDayOfTargetMonth : today.day,
+    );
+    final range = await showDateRangePicker(
+      context: context,
+      locale: const Locale('zh', 'CN'),
+      firstDate: today,
+      lastDate: lastDate,
+      currentDate: today,
+      helpText: '选择休息日（单日请点选同一天）',
+      cancelText: '取消',
+      confirmText: '添加',
+    );
+    if (range == null || !mounted) return;
+
+    final dates = _closedDates().toSet();
+    for (
+      var date = range.start;
+      !date.isAfter(range.end);
+      date = date.add(const Duration(days: 1))
+    ) {
+      dates.add(_dateKey(date));
+    }
+    setState(() => _salon['closedDates'] = dates.toList()..sort());
+  }
+
+  Widget _buildClosedDatesSection() {
+    final dates = _closedDates();
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.only(top: 12),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: AppTheme.bgCream,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: AppTheme.accentBeige),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(
+                Icons.event_busy_outlined,
+                color: AppTheme.primaryPink,
+              ),
+              const SizedBox(width: 8),
+              const Expanded(
+                child: Text(
+                  '休息日',
+                  style: TextStyle(
+                    color: AppTheme.textDark,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+              OutlinedButton.icon(
+                onPressed: _addClosedDates,
+                icon: const Icon(Icons.date_range_outlined, size: 18),
+                label: const Text('选择日期'),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Text(
+            '可选择今天起两个月内的单日或连续日期，休息日将停止接受预约。',
+            style: TextStyle(color: Colors.grey[600], fontSize: 12),
+          ),
+          const SizedBox(height: 10),
+          if (dates.isEmpty)
+            Text('暂未设置休息日', style: TextStyle(color: Colors.grey[600]))
+          else
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                for (final date in dates)
+                  InputChip(
+                    label: Text(date),
+                    onDeleted: () => setState(() {
+                      final nextDates = _closedDates()..remove(date);
+                      _salon['closedDates'] = nextDates;
+                    }),
+                  ),
+              ],
+            ),
+        ],
+      ),
     );
   }
 

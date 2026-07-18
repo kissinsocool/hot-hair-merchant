@@ -10,6 +10,33 @@ import '../../booking/data/order_repository.dart';
 import '../../booking/domain/booking_order.dart';
 import '../data/merchant_salon_repository.dart';
 
+enum _RescheduleAction { previous }
+
+const merchantOrderStatusTabs = <(String, Set<String>)>[
+  ('待确认', {'pending'}),
+  ('待完成', {'accepted'}),
+  ('已完成', {'completed'}),
+  ('已取消', {'canceled', 'rejected'}),
+];
+
+bool isBookingSlotEnabled(
+  Map<String, dynamic> slot,
+  BookingOrder order,
+  DateTime date,
+) {
+  final slotTime = DateTime.tryParse(slot['startTime']?.toString() ?? '');
+  if (slotTime == null || !slotTime.isAfter(DateTime.now())) return false;
+  if (slot['isAvailable'] == true) return true;
+  return slotTime.year == order.startTime.year &&
+      slotTime.month == order.startTime.month &&
+      slotTime.day == order.startTime.day &&
+      slotTime.hour == order.startTime.hour &&
+      slotTime.minute == order.startTime.minute &&
+      date.year == order.startTime.year &&
+      date.month == order.startTime.month &&
+      date.day == order.startTime.day;
+}
+
 class MerchantOrdersScreen extends StatefulWidget {
   const MerchantOrdersScreen({
     super.key,
@@ -37,7 +64,9 @@ class _MerchantOrdersScreenState extends State<MerchantOrdersScreen> {
   bool _isLoading = true;
   bool _isUpdating = false;
   String _errorMessage = '';
-  DateTime? _selectedDate;
+  DateTime? _selectedDate = DateUtils.dateOnly(DateTime.now());
+  String _selectedStaffId = '';
+  int _selectedStatusTab = 0;
   List<BookingOrder> _orders = [];
   List<Map<String, dynamic>> _staffOptions = [];
 
@@ -86,6 +115,10 @@ class _MerchantOrdersScreenState extends State<MerchantOrdersScreen> {
       setState(() {
         _orders = orders;
         _staffOptions = staff;
+        if (_selectedStaffId.isNotEmpty &&
+            !staff.any((item) => item['id']?.toString() == _selectedStaffId)) {
+          _selectedStaffId = '';
+        }
         _isLoading = false;
         _errorMessage = '';
       });
@@ -128,6 +161,7 @@ class _MerchantOrdersScreenState extends State<MerchantOrdersScreen> {
     required String successMessage,
     String reason = '',
     String assignedStaffId = '',
+    DateTime? startTime,
   }) async {
     setState(() => _isUpdating = true);
     try {
@@ -136,6 +170,7 @@ class _MerchantOrdersScreenState extends State<MerchantOrdersScreen> {
         action: action,
         reason: reason,
         assignedStaffId: assignedStaffId,
+        startTime: startTime,
       );
       await _loadOrders(silent: true);
       if (!mounted) return;
@@ -150,6 +185,165 @@ class _MerchantOrdersScreenState extends State<MerchantOrdersScreen> {
     } finally {
       if (mounted) setState(() => _isUpdating = false);
     }
+  }
+
+  Future<void> _rescheduleOrder(BookingOrder order) async {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    var date = order.startTime.isBefore(today) ? today : order.startTime;
+    while (true) {
+      if (!mounted) return;
+      final pickedDate = await showDatePicker(
+        context: context,
+        locale: const Locale('zh', 'CN'),
+        initialDate: date,
+        firstDate: today,
+        lastDate: DateTime(today.year + 2, 12, 31),
+        helpText: '变更预约日期',
+        cancelText: '取消',
+        confirmText: '下一步',
+      );
+      if (pickedDate == null || !mounted) return;
+      date = pickedDate;
+
+      List<Map<String, dynamic>> slots;
+      setState(() => _isUpdating = true);
+      try {
+        slots = await _repository.fetchStaffSlots(
+          order.staffId.isEmpty ? '__no_preference__' : order.staffId,
+          date,
+          salonId: order.salonId,
+        );
+      } catch (e) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('可用时间加载失败: $e')));
+        return;
+      } finally {
+        if (mounted) setState(() => _isUpdating = false);
+      }
+      if (!mounted) return;
+
+      final result = await _showAvailableTimePicker(slots, order, date);
+      if (result == _RescheduleAction.previous) continue;
+      if (result is! TimeOfDay || !mounted) return;
+
+      final startTime = DateTime(
+        date.year,
+        date.month,
+        date.day,
+        result.hour,
+        result.minute,
+      );
+      if (!startTime.isAfter(DateTime.now())) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('请选择未来的预约时间')));
+        return;
+      }
+      if (startTime.isAtSameMomentAs(order.startTime)) return;
+
+      await _updateOrderStatus(
+        order,
+        action: 'reschedule',
+        startTime: startTime,
+        successMessage: '预约时间已变更，用户将收到改期消息',
+      );
+      return;
+    }
+  }
+
+  Future<Object?> _showAvailableTimePicker(
+    List<Map<String, dynamic>> slots,
+    BookingOrder order,
+    DateTime date,
+  ) {
+    final initialMinutes = order.startTime.hour * 60 + order.startTime.minute;
+    final enabledMinutes = slots
+        .where((slot) => isBookingSlotEnabled(slot, order, date))
+        .map((slot) {
+          final parts = slot['time'].toString().split(':');
+          return int.parse(parts[0]) * 60 + int.parse(parts[1]);
+        })
+        .toSet();
+    int? selectedMinutes = enabledMinutes.contains(initialMinutes)
+        ? initialMinutes
+        : enabledMinutes.isEmpty
+        ? null
+        : enabledMinutes.first;
+
+    return showDialog<Object>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('变更预约时间'),
+        content: SizedBox(
+          width: 380,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              DropdownButtonFormField<int>(
+                initialValue: selectedMinutes,
+                decoration: const InputDecoration(labelText: '可用时间段'),
+                items: [
+                  for (final slot in slots)
+                    DropdownMenuItem(
+                      value: () {
+                        final parts = slot['time'].toString().split(':');
+                        return int.parse(parts[0]) * 60 + int.parse(parts[1]);
+                      }(),
+                      enabled: isBookingSlotEnabled(slot, order, date),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Text(slot['time'].toString()),
+                          if (!isBookingSlotEnabled(slot, order, date))
+                            Text(
+                              slot['reason']?.toString() ?? '不可预约',
+                              style: const TextStyle(color: Colors.grey),
+                            ),
+                        ],
+                      ),
+                    ),
+                ],
+                onChanged: (value) =>
+                    selectedMinutes = value ?? selectedMinutes,
+              ),
+              const SizedBox(height: 24),
+              Row(
+                children: [
+                  TextButton(
+                    onPressed: () => Navigator.pop(
+                      dialogContext,
+                      _RescheduleAction.previous,
+                    ),
+                    child: const Text('上一步'),
+                  ),
+                  const Spacer(),
+                  TextButton(
+                    onPressed: () => Navigator.pop(dialogContext),
+                    child: const Text('取消'),
+                  ),
+                  const SizedBox(width: 8),
+                  FilledButton(
+                    onPressed: selectedMinutes == null
+                        ? null
+                        : () => Navigator.pop(
+                            dialogContext,
+                            TimeOfDay(
+                              hour: selectedMinutes! ~/ 60,
+                              minute: selectedMinutes! % 60,
+                            ),
+                          ),
+                    child: const Text('确定'),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 
   Future<void> _showReviewDialog(BookingOrder order) async {
@@ -473,12 +667,22 @@ class _MerchantOrdersScreenState extends State<MerchantOrdersScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final filteredOrders = _selectedDate == null
-        ? _orders
-        : _orders
-              .where((order) => _isSameDate(order.startTime, _selectedDate!))
-              .toList();
-    final pendingCount = filteredOrders
+    final scopedOrders = _orders
+        .where(
+          (order) =>
+              (_selectedDate == null ||
+                  _isSameDate(order.startTime, _selectedDate!)) &&
+              (_selectedStaffId.isEmpty || order.staffId == _selectedStaffId),
+        )
+        .toList();
+    final filteredOrders = scopedOrders
+        .where(
+          (order) => merchantOrderStatusTabs[_selectedStatusTab].$2.contains(
+            order.status,
+          ),
+        )
+        .toList();
+    final pendingCount = scopedOrders
         .where((order) => order.status == 'pending')
         .length;
 
@@ -511,7 +715,33 @@ class _MerchantOrdersScreenState extends State<MerchantOrdersScreen> {
           children: [
             PageWidth(child: _buildSummary(pendingCount)),
             const SizedBox(height: 12),
-            PageWidth(child: _buildDateFilter(filteredOrders.length)),
+            PageWidth(
+              child: LayoutBuilder(
+                builder: (context, constraints) {
+                  final dateFilter = _buildDateFilter(scopedOrders.length);
+                  final staffFilter = _buildStaffFilter();
+                  if (constraints.maxWidth < 700) {
+                    return Column(
+                      children: [
+                        dateFilter,
+                        const SizedBox(height: 12),
+                        staffFilter,
+                      ],
+                    );
+                  }
+                  return Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Expanded(child: dateFilter),
+                      const SizedBox(width: 12),
+                      Expanded(child: staffFilter),
+                    ],
+                  );
+                },
+              ),
+            ),
+            const SizedBox(height: 12),
+            PageWidth(child: _buildStatusTabs()),
             const SizedBox(height: 18),
             if (_isLoading)
               const Padding(
@@ -525,8 +755,8 @@ class _MerchantOrdersScreenState extends State<MerchantOrdersScreen> {
             else if (filteredOrders.isEmpty)
               PageWidth(
                 child: _buildEmptyState(
-                  _selectedDate == null ? '暂无订单' : '当天暂无订单',
-                  _selectedDate == null ? '用户提交预约后会出现在这里' : '清除日期可查看全部订单',
+                  '暂无${merchantOrderStatusTabs[_selectedStatusTab].$1}订单',
+                  '可切换日期、理发师或订单状态查看其他订单',
                 ),
               )
             else
@@ -587,7 +817,9 @@ class _MerchantOrdersScreenState extends State<MerchantOrdersScreen> {
   Widget _buildDateFilter(int visibleCount) {
     final hasFilter = _selectedDate != null;
     final label = hasFilter ? _filterDateFormat.format(_selectedDate!) : '全部日期';
-    final subtitle = hasFilter ? '显示当天 $visibleCount 单订单' : '显示全部订单';
+    final subtitle = hasFilter
+        ? '显示当天 $visibleCount 单订单'
+        : '显示 $visibleCount 单订单';
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
@@ -643,6 +875,82 @@ class _MerchantOrdersScreenState extends State<MerchantOrdersScreen> {
               color: Colors.grey[600],
             ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildStaffFilter() {
+    return Container(
+      height: 62,
+      padding: const EdgeInsets.symmetric(horizontal: 14),
+      decoration: BoxDecoration(
+        color: AppTheme.white,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: AppTheme.accentBeige),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 36,
+            height: 36,
+            decoration: BoxDecoration(
+              color: AppTheme.primaryPink.withValues(alpha: 0.10),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: const Icon(
+              Icons.person_outline,
+              color: AppTheme.primaryPink,
+              size: 19,
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: DropdownButton<String>(
+              value: _selectedStaffId,
+              isExpanded: true,
+              underline: const SizedBox.shrink(),
+              items: [
+                const DropdownMenuItem(value: '', child: Text('全部理发师')),
+                for (final staff in _staffOptions)
+                  DropdownMenuItem(
+                    value: staff['id']?.toString() ?? '',
+                    child: Text(
+                      staff['name']?.toString() ?? '未命名理发师',
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+              ],
+              onChanged: (value) =>
+                  setState(() => _selectedStaffId = value ?? ''),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildStatusTabs() {
+    return Container(
+      decoration: BoxDecoration(
+        color: AppTheme.white,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: AppTheme.accentBeige),
+      ),
+      child: DefaultTabController(
+        length: merchantOrderStatusTabs.length,
+        initialIndex: _selectedStatusTab,
+        child: TabBar(
+          onTap: (index) => setState(() => _selectedStatusTab = index),
+          indicatorSize: TabBarIndicatorSize.tab,
+          indicator: BoxDecoration(
+            color: AppTheme.primaryPink.withValues(alpha: 0.16),
+            borderRadius: BorderRadius.circular(7),
+          ),
+          dividerColor: Colors.transparent,
+          labelColor: AppTheme.textDark,
+          unselectedLabelColor: Colors.grey[600],
+          tabs: [for (final tab in merchantOrderStatusTabs) Tab(text: tab.$1)],
+        ),
       ),
     );
   }
@@ -717,6 +1025,15 @@ class _MerchantOrdersScreenState extends State<MerchantOrdersScreen> {
           ],
           if (isPending) ...[
             const SizedBox(height: 14),
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton.icon(
+                onPressed: _isUpdating ? null : () => _rescheduleOrder(order),
+                icon: const Icon(Icons.edit_calendar_outlined, size: 18),
+                label: const Text('预约变更'),
+              ),
+            ),
+            const SizedBox(height: 10),
             Row(
               children: [
                 Expanded(
@@ -750,6 +1067,15 @@ class _MerchantOrdersScreenState extends State<MerchantOrdersScreen> {
             ),
           ] else if (isAccepted) ...[
             const SizedBox(height: 14),
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton.icon(
+                onPressed: _isUpdating ? null : () => _rescheduleOrder(order),
+                icon: const Icon(Icons.edit_calendar_outlined, size: 18),
+                label: const Text('预约变更'),
+              ),
+            ),
+            const SizedBox(height: 10),
             Row(
               children: [
                 Expanded(

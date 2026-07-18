@@ -15,6 +15,23 @@ class OrderRepository {
         .toList();
   }
 
+  Future<List<Map<String, dynamic>>> fetchStaffSlots(
+    String staffId,
+    DateTime date, {
+    String salonId = '',
+  }) async {
+    final response = await _apiClient.request(
+      '/staff/$staffId/slots',
+      queryParameters: {
+        'date': date.toIso8601String().split('T').first,
+        if (salonId.isNotEmpty) 'salonId': salonId,
+      },
+    );
+    return (response.data as List)
+        .map((item) => Map<String, dynamic>.from(item as Map))
+        .toList();
+  }
+
   Future<BookingOrder> updateMerchantBooking(
     String bookingId, {
     required bool accept,
@@ -34,6 +51,7 @@ class OrderRepository {
     required String action,
     String reason = '',
     String assignedStaffId = '',
+    DateTime? startTime,
   }) async {
     final response = await _apiClient.request(
       '/merchant/bookings/$bookingId',
@@ -42,6 +60,7 @@ class OrderRepository {
         'action': action,
         'reason': reason,
         if (assignedStaffId.isNotEmpty) 'assignedStaffId': assignedStaffId,
+        if (startTime != null) 'startTime': startTime.toIso8601String(),
       },
     );
 

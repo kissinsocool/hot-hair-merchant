@@ -3,6 +3,8 @@ import 'dart:convert';
 
 import 'package:web_socket_channel/web_socket_channel.dart';
 
+import '../../../core/network/api_client.dart';
+
 class BookingUpdateStream {
   BookingUpdateStream._();
 
@@ -55,6 +57,19 @@ class BookingUpdateStream {
     try {
       final decoded = jsonDecode(message);
       if (decoded is Map<String, dynamic>) {
+        if (decoded['event'] == 'auth.required') {
+          final token = ApiClient.authToken;
+          if (token != null && token.isNotEmpty) {
+            _channel?.sink.add(
+              jsonEncode({
+                'event': 'authenticate',
+                'role': 'merchant',
+                'token': token,
+              }),
+            );
+          }
+          return;
+        }
         _controller.add(decoded);
       }
     } catch (_) {
