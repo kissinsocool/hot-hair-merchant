@@ -149,21 +149,15 @@ class AdminRepository {
     return data.map((item) => Map<String, dynamic>.from(item as Map)).toList();
   }
 
-  Future<void> reviewUserImage({
+  Future<void> manageUserImage({
     required String bookingId,
     required String type,
-    required String url,
-    required bool approve,
+    required String action,
   }) async {
     await _apiClient.request(
       '/admin/user-images',
       method: 'PATCH',
-      data: {
-        'bookingId': bookingId,
-        'type': type,
-        'url': url,
-        'action': approve ? 'approve' : 'reject',
-      },
+      data: {'bookingId': bookingId, 'type': type, 'action': action},
     );
   }
 }

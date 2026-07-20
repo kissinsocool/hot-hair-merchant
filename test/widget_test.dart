@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hot_pepper_merchant/features/auth/data/merchant_auth_repository.dart';
 import 'package:hot_pepper_merchant/features/auth/presentation/merchant_login_screen.dart';
+import 'package:hot_pepper_merchant/features/admin/presentation/admin_dashboard_screen.dart';
 import 'package:hot_pepper_merchant/features/booking/domain/booking_order.dart';
 import 'package:hot_pepper_merchant/features/merchant/presentation/merchant_orders_screen.dart';
 import 'package:hot_pepper_merchant/main.dart';
@@ -119,6 +120,34 @@ void main() {
 
     expect(canceledStatuses, containsAll(['canceled', 'rejected']));
     expect(canceledStatuses, isNot(contains('completed')));
+  });
+
+  test('accounting deducts unfinished and canceled orders', () {
+    final startTime = DateTime(2026, 7, 1);
+    final totals = calculateOrderAccounting([
+      for (final status in [
+        'completed',
+        'pending',
+        'accepted',
+        'canceled',
+        'rejected',
+      ])
+        _bookingOrder(id: status, startTime: startTime, status: status),
+    ]);
+
+    expect(totals.total, 3000);
+    expect(totals.unfinished, 1200);
+    expect(totals.canceled, 1200);
+    expect(totals.result, 600);
+    expect(totals.unfinishedCount, 2);
+    expect(totals.canceledCount, 2);
+    expect(totals.resultCount, 1);
+  });
+
+  test('recognizes final comment audit statuses', () {
+    expect(isAuditedReviewStatus('pending'), isFalse);
+    expect(isAuditedReviewStatus('approved'), isTrue);
+    expect(isAuditedReviewStatus('rejected'), isTrue);
   });
 }
 

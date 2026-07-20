@@ -51,12 +51,10 @@ class MerchantSalonRepository {
     required String fileName,
     required String base64Data,
   }) async {
-    final response = await _apiClient.request(
-      '/merchant/uploads',
-      method: 'POST',
-      data: {'fileName': fileName, 'data': base64Data},
+    final uploads = await _apiClient.uploadBase64Images(
+      type: 'public',
+      images: [(fileName: fileName, base64Data: base64Data)],
     );
-    final data = Map<String, dynamic>.from(response.data as Map);
-    return data['url'] as String;
+    return uploads.single['url'] as String;
   }
 }

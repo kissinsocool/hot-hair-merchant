@@ -9,6 +9,53 @@ import '../../booking/domain/booking_order.dart';
 import '../../merchant/data/image_upload_picker.dart';
 import '../data/admin_repository.dart';
 
+({
+  double total,
+  double unfinished,
+  double canceled,
+  double result,
+  int unfinishedCount,
+  int canceledCount,
+  int resultCount,
+})
+calculateOrderAccounting(Iterable<BookingOrder> orders) {
+  final orderList = orders.toList();
+  final unfinishedOrders = orderList
+      .where((order) => {'pending', 'accepted'}.contains(order.status))
+      .toList();
+  final canceledOrders = orderList
+      .where((order) => {'canceled', 'rejected'}.contains(order.status))
+      .toList();
+  final total = orderList.fold<double>(
+    0,
+    (sum, order) => sum + _bookingAmount(order),
+  );
+  final unfinished = unfinishedOrders.fold<double>(
+    0,
+    (sum, order) => sum + _bookingAmount(order),
+  );
+  final canceled = canceledOrders.fold<double>(
+    0,
+    (sum, order) => sum + _bookingAmount(order),
+  );
+  return (
+    total: total,
+    unfinished: unfinished,
+    canceled: canceled,
+    result: total - unfinished - canceled,
+    unfinishedCount: unfinishedOrders.length,
+    canceledCount: canceledOrders.length,
+    resultCount:
+        orderList.length - unfinishedOrders.length - canceledOrders.length,
+  );
+}
+
+double _bookingAmount(BookingOrder order) =>
+    double.tryParse(order.servicePrice.replaceAll(RegExp(r'[^0-9.]'), '')) ?? 0;
+
+bool isAuditedReviewStatus(dynamic status) =>
+    status == 'approved' || status == 'rejected';
+
 class AdminDashboardScreen extends StatefulWidget {
   const AdminDashboardScreen({super.key, required this.onLogout});
 
@@ -55,6 +102,22 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
         _userImages = results[4] as List<Map<String, dynamic>>;
         _ad = results[5] as Map<String, dynamic>;
       });
+    } on DioException catch (error) {
+      if (error.response?.statusCode == 401) {
+        widget.onLogout();
+        return;
+      }
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(_saveError(error))));
+      }
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(_saveError(error))));
+      }
     } finally {
       if (showLoading && mounted) setState(() => _isLoading = false);
     }
@@ -89,8 +152,8 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
               Tab(icon: Icon(Icons.dashboard_outlined), text: '概览'),
               Tab(icon: Icon(Icons.storefront_outlined), text: '商家账号'),
               Tab(icon: Icon(Icons.people_outline), text: '客户端用户'),
-              Tab(icon: Icon(Icons.receipt_long_outlined), text: '订单'),
-              Tab(icon: Icon(Icons.image_search_outlined), text: '图片审核'),
+              Tab(icon: Icon(Icons.rate_review_outlined), text: '评论管理'),
+              Tab(icon: Icon(Icons.report_outlined), text: '投诉管理'),
               Tab(icon: Icon(Icons.campaign_outlined), text: '广告位'),
             ],
           ),
@@ -111,16 +174,63 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                     onTogglePublish: _toggleMerchantPublishStatus,
                     onViewLicense: _showLicenseDialog,
                     onViewContent: _showContentDialog,
+                    onViewOrders: _showMerchantOrdersDialog,
                   ),
                   _UsersTab(users: _users),
-                  _BookingsTab(bookings: _bookings, merchants: _merchants),
-                  _UserImagesTab(
-                    items: _userImages,
-                    onReview: _reviewUserImage,
-                  ),
+                  _ReviewsTab(items: _userImages, onAction: _manageReview),
+                  _ComplaintsTab(items: _userImages, users: _users),
                   _AdTab(config: _ad, onSave: _saveAd),
                 ],
               ),
+      ),
+    );
+  }
+
+  Future<void> _showMerchantOrdersDialog(Map<String, dynamic> merchant) async {
+    final size = MediaQuery.sizeOf(context);
+    await showDialog<void>(
+      context: context,
+      builder: (context) => Dialog(
+        insetPadding: const EdgeInsets.all(8),
+        child: SizedBox(
+          width: min(1500, size.width - 16),
+          height: min(820, size.height - 24),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 12, 8, 4),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        '${merchant['displayName'] ?? merchant['username'] ?? ''} · 当月订单',
+                        style: Theme.of(context).textTheme.titleLarge,
+                      ),
+                    ),
+                    IconButton(
+                      tooltip: '关闭',
+                      onPressed: () => Navigator.pop(context),
+                      icon: const Icon(Icons.close),
+                    ),
+                  ],
+                ),
+              ),
+              Expanded(
+                child: _BookingsTab(
+                  bookings: _bookings,
+                  merchants: _merchants,
+                  users: _users,
+                  initialSalonId: merchant['salonId']?.toString(),
+                  initialMonth: DateTime(
+                    DateTime.now().year,
+                    DateTime.now().month,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -146,17 +256,40 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
     return saved;
   }
 
-  Future<void> _reviewUserImage(Map<String, dynamic> item, bool approve) async {
+  Future<void> _manageReview(Map<String, dynamic> item, String action) async {
+    if (action == 'delete') {
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('删除评论'),
+          content: const Text('删除后不可恢复，确定继续吗？'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('取消'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('删除'),
+            ),
+          ],
+        ),
+      );
+      if (confirmed != true) return;
+    }
     try {
-      await _repository.reviewUserImage(
+      await _repository.manageUserImage(
         bookingId: item['bookingId'].toString(),
         type: item['type'].toString(),
-        url: item['url'].toString(),
-        approve: approve,
+        action: action,
       );
       await _load();
     } catch (error) {
       if (!mounted) return;
+      if (error is DioException && error.response?.statusCode == 401) {
+        widget.onLogout();
+        return;
+      }
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(SnackBar(content: Text(_saveError(error))));
@@ -286,26 +419,38 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
   }
 
   Future<void> _showLicenseDialog(Map<String, dynamic> merchant) async {
-    final licenseUrl = merchant['licenseUrl']?.toString() ?? '';
-    if (licenseUrl.isEmpty) {
+    final documents = [
+      ('营业执照', merchant['licenseUrl']?.toString() ?? ''),
+      ('法人身份证人像面', merchant['legalPersonIdFrontUrl']?.toString() ?? ''),
+      ('法人身份证国徽面', merchant['legalPersonIdBackUrl']?.toString() ?? ''),
+      ('地址证明', merchant['addressProofUrl']?.toString() ?? ''),
+    ];
+    if (documents.every((document) => document.$2.isEmpty)) {
       ScaffoldMessenger.of(
         context,
-      ).showSnackBar(const SnackBar(content: Text('商家尚未提交营业执照')));
+      ).showSnackBar(const SnackBar(content: Text('商家尚未提交资质材料')));
       return;
     }
 
+    final size = MediaQuery.sizeOf(context);
     await showDialog<void>(
       context: context,
       builder: (context) => AlertDialog(
-        title: Text('${merchant['displayName']} 营业执照'),
+        title: Text('${merchant['displayName']} 资质材料'),
         content: SizedBox(
-          width: 520,
-          child: Image.network(
-            licenseUrl,
-            fit: BoxFit.contain,
-            errorBuilder: (context, error, stackTrace) => const SizedBox(
-              height: 240,
-              child: Center(child: Icon(Icons.broken_image)),
+          width: min(1000, size.width - 48),
+          height: min(680, size.height - 160),
+          child: GridView.builder(
+            gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+              crossAxisCount: size.width >= 900 ? 2 : 1,
+              mainAxisSpacing: 12,
+              crossAxisSpacing: 12,
+              childAspectRatio: 1.45,
+            ),
+            itemCount: documents.length,
+            itemBuilder: (context, index) => _QualificationDocumentPreview(
+              title: documents[index].$1,
+              imageUrl: documents[index].$2,
             ),
           ),
         ),
@@ -348,20 +493,19 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
               children: [
                 _ContentLine('店铺名称', salon['name']),
                 _ContentLine('地址', salon['address']),
-                _ContentLine('电话', salon['phone']),
                 _ContentLine('短介绍', salon['description']),
                 _ContentLine('关于我们', salon['fullDescription']),
                 for (final service in (salon['services'] as List?) ?? const [])
                   if (service is Map)
                     _ContentLine(
                       '套餐',
-                      '${service['name'] ?? ''} ${service['price'] ?? ''} ${service['note'] ?? ''}',
+                      '${service['name'] ?? ''} ${service['note'] ?? ''}',
                     ),
                 for (final staff in (salon['staff'] as List?) ?? const [])
                   if (staff is Map)
                     _ContentLine(
                       '理发师',
-                      '${staff['name'] ?? ''} ${staff['role'] ?? ''} ${staff['bio'] ?? ''}',
+                      '${staff['name'] ?? ''} ${staff['bio'] ?? ''}',
                     ),
                 const SizedBox(height: 12),
                 Wrap(
@@ -585,6 +729,41 @@ class _OverviewTab extends StatelessWidget {
   }
 }
 
+class _QualificationDocumentPreview extends StatelessWidget {
+  const _QualificationDocumentPreview({
+    required this.title,
+    required this.imageUrl,
+  });
+
+  final String title;
+  final String imageUrl;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: _panelDecoration(),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text(title, style: const TextStyle(fontWeight: FontWeight.bold)),
+          const SizedBox(height: 8),
+          Expanded(
+            child: imageUrl.isEmpty
+                ? const Center(child: Text('未上传'))
+                : Image.network(
+                    imageUrl,
+                    fit: BoxFit.contain,
+                    errorBuilder: (context, error, stackTrace) =>
+                        const Center(child: Icon(Icons.broken_image, size: 48)),
+                  ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _MerchantsTab extends StatelessWidget {
   const _MerchantsTab({
     required this.merchants,
@@ -595,6 +774,7 @@ class _MerchantsTab extends StatelessWidget {
     required this.onTogglePublish,
     required this.onViewLicense,
     required this.onViewContent,
+    required this.onViewOrders,
   });
 
   final List<Map<String, dynamic>> merchants;
@@ -607,6 +787,7 @@ class _MerchantsTab extends StatelessWidget {
   final ValueChanged<Map<String, dynamic>> onTogglePublish;
   final ValueChanged<Map<String, dynamic>> onViewLicense;
   final ValueChanged<Map<String, dynamic>> onViewContent;
+  final ValueChanged<Map<String, dynamic>> onViewOrders;
 
   @override
   Widget build(BuildContext context) {
@@ -639,8 +820,8 @@ class _MerchantsTab extends StatelessWidget {
                 const Expanded(
                   child: TabBar(
                     tabs: [
-                      Tab(text: '待审核'),
                       Tab(text: '已上架'),
+                      Tab(text: '待审核'),
                       Tab(text: '未上架'),
                     ],
                   ),
@@ -657,8 +838,8 @@ class _MerchantsTab extends StatelessWidget {
           Expanded(
             child: TabBarView(
               children: [
-                _buildMerchantList(pending),
                 _buildMerchantList(online),
+                _buildMerchantList(pending),
                 _buildMerchantList(offline),
               ],
             ),
@@ -681,6 +862,10 @@ class _MerchantsTab extends StatelessWidget {
   Widget _buildMerchantCard(Map<String, dynamic> merchant) {
     final licenseApproved = merchant['licenseStatus'] == 'approved';
     final contentApproved = merchant['contentReviewStatus'] == 'approved';
+    final salon = Map<String, dynamic>.from(
+      (merchant['salon'] as Map?) ?? const {},
+    );
+    final salonAddress = salon['address']?.toString().trim() ?? '';
 
     return Container(
       margin: const EdgeInsets.only(bottom: 10),
@@ -719,6 +904,11 @@ class _MerchantsTab extends StatelessWidget {
                     const SizedBox(height: 4),
                     Text(
                       '店铺：${merchant['salonName'] ?? '-'}',
+                      style: TextStyle(color: Colors.grey[700]),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      '地址：${salonAddress.isEmpty ? '-' : salonAddress}',
                       style: TextStyle(color: Colors.grey[700]),
                     ),
                     const SizedBox(height: 4),
@@ -767,6 +957,11 @@ class _MerchantsTab extends StatelessWidget {
             spacing: 8,
             runSpacing: 8,
             children: [
+              OutlinedButton.icon(
+                onPressed: () => onViewOrders(merchant),
+                icon: const Icon(Icons.calculate_outlined),
+                label: const Text('核算'),
+              ),
               OutlinedButton.icon(
                 onPressed: () => onViewLicense(merchant),
                 icon: const Icon(Icons.image_outlined),
@@ -1067,100 +1262,307 @@ class _AdTabState extends State<_AdTab> {
   }
 }
 
-class _UserImagesTab extends StatelessWidget {
-  const _UserImagesTab({required this.items, required this.onReview});
+class _ReviewsTab extends StatelessWidget {
+  const _ReviewsTab({required this.items, required this.onAction});
 
   final List<Map<String, dynamic>> items;
-  final void Function(Map<String, dynamic> item, bool approve) onReview;
+  final void Function(Map<String, dynamic> item, String action) onAction;
 
   @override
   Widget build(BuildContext context) {
-    if (items.isEmpty) {
-      return const Center(child: Text('暂无待审核图片'));
+    final reviews = items.where((item) => item['type'] == 'review').toList();
+    final pending = reviews
+        .where((item) => !isAuditedReviewStatus(item['status']))
+        .toList();
+    final approved = reviews
+        .where((item) => item['status'] == 'approved')
+        .toList();
+    final rejected = reviews
+        .where((item) => item['status'] == 'rejected')
+        .toList();
+
+    return DefaultTabController(
+      length: 3,
+      child: Column(
+        children: [
+          const Material(
+            color: AppTheme.white,
+            child: TabBar(
+              labelColor: AppTheme.primaryPink,
+              unselectedLabelColor: AppTheme.textDark,
+              indicatorColor: AppTheme.primaryPink,
+              tabs: [
+                Tab(text: '待审核'),
+                Tab(text: '已审核'),
+                Tab(text: '已驳回'),
+              ],
+            ),
+          ),
+          Expanded(
+            child: TabBarView(
+              children: [
+                _buildReviewTable(pending, '暂无待审核评论'),
+                _buildReviewTable(approved, '暂无已审核评论'),
+                _buildReviewTable(rejected, '暂无已驳回评论'),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildReviewTable(
+    List<Map<String, dynamic>> reviews,
+    String emptyText,
+  ) {
+    if (reviews.isEmpty) return Center(child: Text(emptyText));
+    return ListView(
+      padding: const EdgeInsets.all(20),
+      children: [
+        Container(
+          decoration: _panelDecoration(),
+          child: SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: DataTable(
+              dataRowMinHeight: 76,
+              dataRowMaxHeight: 120,
+              columns: const [
+                DataColumn(label: Text('用户名')),
+                DataColumn(label: Text('评论内容')),
+                DataColumn(label: Text('图片')),
+                DataColumn(label: Text('评论时间')),
+                DataColumn(label: Text('关联商家')),
+                DataColumn(label: Text('状态')),
+                DataColumn(label: Text('操作')),
+              ],
+              rows: [
+                for (final item in reviews)
+                  DataRow(
+                    cells: [
+                      DataCell(Text(item['userName']?.toString() ?? '-')),
+                      DataCell(
+                        SizedBox(
+                          width: 280,
+                          child: Text(item['content']?.toString() ?? '-'),
+                        ),
+                      ),
+                      DataCell(_ImageThumbnails(item: item)),
+                      DataCell(Text(_itemTime(item['createdAt']))),
+                      DataCell(Text(item['salonName']?.toString() ?? '-')),
+                      DataCell(
+                        _ReviewStatus(status: item['status']?.toString()),
+                      ),
+                      DataCell(
+                        Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            if (item['status'] != 'approved')
+                              FilledButton(
+                                onPressed: () => onAction(item, 'approve'),
+                                child: const Text('审核通过'),
+                              ),
+                            if (item['status'] == 'pending')
+                              const SizedBox(width: 8),
+                            if (item['status'] != 'rejected')
+                              OutlinedButton(
+                                onPressed: () => onAction(item, 'reject'),
+                                child: const Text('驳回'),
+                              ),
+                            const SizedBox(width: 8),
+                            TextButton(
+                              onPressed: () => onAction(item, 'delete'),
+                              style: TextButton.styleFrom(
+                                foregroundColor: Colors.red,
+                              ),
+                              child: const Text('删除'),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _ReviewStatus extends StatelessWidget {
+  const _ReviewStatus({required this.status});
+
+  final String? status;
+
+  @override
+  Widget build(BuildContext context) {
+    final (label, color) = switch (status) {
+      'approved' => ('已通过', Colors.green),
+      'rejected' => ('已驳回', Colors.red),
+      _ => ('待审核', Colors.orange),
+    };
+    return Chip(
+      label: Text(label),
+      labelStyle: TextStyle(color: color),
+      backgroundColor: color.withValues(alpha: 0.1),
+      side: BorderSide(color: color.withValues(alpha: 0.3)),
+    );
+  }
+}
+
+class _ComplaintsTab extends StatelessWidget {
+  const _ComplaintsTab({required this.items, required this.users});
+
+  final List<Map<String, dynamic>> items;
+  final List<Map<String, dynamic>> users;
+
+  @override
+  Widget build(BuildContext context) {
+    final complaints = items
+        .where((item) => item['type'] == 'complaint')
+        .toList();
+    if (complaints.isEmpty) {
+      return const Center(child: Text('暂无用户投诉'));
     }
 
-    return GridView.builder(
+    return ListView(
       padding: const EdgeInsets.all(20),
-      gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-        crossAxisCount: MediaQuery.of(context).size.width > 900 ? 3 : 2,
-        mainAxisSpacing: 14,
-        crossAxisSpacing: 14,
-        childAspectRatio: 0.78,
-      ),
-      itemCount: items.length,
-      itemBuilder: (context, index) {
-        final item = items[index];
-        final type = item['type'] == 'complaint' ? '投诉' : '评价';
-        final imageUrls = ((item['imageUrls'] as List?) ?? const [])
-            .map((url) => url.toString())
-            .where((url) => url.isNotEmpty)
-            .toList();
-        return Container(
-          padding: const EdgeInsets.all(12),
+      children: [
+        Container(
           decoration: _panelDecoration(),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Expanded(
-                child: GridView.count(
-                  crossAxisCount: imageUrls.length > 1 ? 2 : 1,
-                  mainAxisSpacing: 6,
-                  crossAxisSpacing: 6,
-                  physics: const NeverScrollableScrollPhysics(),
-                  children: imageUrls.isEmpty
-                      ? const [Center(child: Text('无图片'))]
-                      : [
-                          for (final url in imageUrls)
-                            ClipRRect(
-                              borderRadius: BorderRadius.circular(12),
-                              child: Image.network(
-                                url,
-                                fit: BoxFit.cover,
-                                errorBuilder: (context, error, stackTrace) =>
-                                    const Center(
-                                      child: Icon(Icons.broken_image),
-                                    ),
-                              ),
-                            ),
-                        ],
+          child: SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: DataTable(
+              dataRowMinHeight: 76,
+              dataRowMaxHeight: 120,
+              columns: const [
+                DataColumn(label: Text('用户名')),
+                DataColumn(label: Text('订单号')),
+                DataColumn(label: Text('投诉内容')),
+                DataColumn(label: Text('图片')),
+                DataColumn(label: Text('投诉时间')),
+                DataColumn(label: Text('关联商家')),
+                DataColumn(label: Text('用户电话')),
+              ],
+              rows: [
+                for (final item in complaints)
+                  DataRow(
+                    cells: [
+                      DataCell(Text(item['userName']?.toString() ?? '-')),
+                      DataCell(Text(item['bookingId']?.toString() ?? '-')),
+                      DataCell(
+                        SizedBox(
+                          width: 280,
+                          child: Text(item['content']?.toString() ?? '-'),
+                        ),
+                      ),
+                      DataCell(_ImageThumbnails(item: item)),
+                      DataCell(Text(_itemTime(item['createdAt']))),
+                      DataCell(Text(item['salonName']?.toString() ?? '-')),
+                      DataCell(Text(_userPhone(item['userId']))),
+                    ],
+                  ),
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  String _userPhone(dynamic userId) {
+    final id = userId?.toString().replaceFirst(RegExp(r'^user-'), '') ?? '';
+    for (final user in users) {
+      if (user['id']?.toString() == id) {
+        final phone = user['phone']?.toString() ?? '';
+        return phone.isEmpty ? '-' : phone;
+      }
+    }
+    return '-';
+  }
+}
+
+String _itemTime(dynamic value) {
+  final time = DateTime.tryParse(value?.toString() ?? '')?.toLocal();
+  return time == null ? '-' : DateFormat('yyyy-MM-dd HH:mm').format(time);
+}
+
+class _ImageThumbnails extends StatelessWidget {
+  const _ImageThumbnails({required this.item});
+
+  final Map<String, dynamic> item;
+
+  @override
+  Widget build(BuildContext context) {
+    final urls = ((item['imageUrls'] as List?) ?? const [])
+        .map((url) => url.toString())
+        .where((url) => url.isNotEmpty)
+        .toList();
+    if (urls.isEmpty) return const Text('-');
+
+    return SizedBox(
+      width: 170,
+      child: Wrap(
+        spacing: 6,
+        runSpacing: 6,
+        children: [
+          for (final url in urls)
+            InkWell(
+              onTap: () => _showPreview(context, url),
+              borderRadius: BorderRadius.circular(6),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(6),
+                child: Image.network(
+                  url,
+                  width: 48,
+                  height: 48,
+                  fit: BoxFit.cover,
+                  errorBuilder: (context, error, stackTrace) => const SizedBox(
+                    width: 48,
+                    height: 48,
+                    child: Icon(Icons.broken_image),
+                  ),
                 ),
               ),
-              const SizedBox(height: 10),
-              Text('$type · ${item['salonName'] ?? '-'}'),
-              const SizedBox(height: 4),
-              Text(
-                '${item['userName'] ?? '-'} · ${item['serviceName'] ?? '-'}',
-                style: TextStyle(color: Colors.grey[700], fontSize: 12),
-              ),
-              const SizedBox(height: 4),
-              Text(
-                item['content']?.toString() ?? '',
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(color: Colors.grey[700], fontSize: 12),
-              ),
-              const SizedBox(height: 10),
-              Row(
-                children: [
-                  Expanded(
-                    child: OutlinedButton(
-                      onPressed: () => onReview(item, false),
-                      child: const Text('驳回'),
-                    ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _showPreview(BuildContext context, String url) {
+    return showDialog<void>(
+      context: context,
+      builder: (context) => Dialog(
+        child: Stack(
+          children: [
+            ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 900, maxHeight: 700),
+              child: InteractiveViewer(
+                child: Image.network(
+                  url,
+                  fit: BoxFit.contain,
+                  errorBuilder: (context, error, stackTrace) => const Padding(
+                    padding: EdgeInsets.all(48),
+                    child: Icon(Icons.broken_image, size: 64),
                   ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: FilledButton(
-                      onPressed: () => onReview(item, true),
-                      child: const Text('通过'),
-                    ),
-                  ),
-                ],
+                ),
               ),
-            ],
-          ),
-        );
-      },
+            ),
+            Positioned(
+              top: 4,
+              right: 4,
+              child: IconButton.filled(
+                tooltip: '关闭',
+                onPressed: () => Navigator.pop(context),
+                icon: const Icon(Icons.close),
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }
@@ -1187,25 +1589,41 @@ class _UsersTab extends StatelessWidget {
 }
 
 class _BookingsTab extends StatefulWidget {
-  const _BookingsTab({required this.bookings, required this.merchants});
+  const _BookingsTab({
+    required this.bookings,
+    required this.merchants,
+    required this.users,
+    this.initialSalonId,
+    this.initialMonth,
+  });
 
   final List<BookingOrder> bookings;
   final List<Map<String, dynamic>> merchants;
+  final List<Map<String, dynamic>> users;
+  final String? initialSalonId;
+  final DateTime? initialMonth;
 
   @override
   State<_BookingsTab> createState() => _BookingsTabState();
 }
 
 class _BookingsTabState extends State<_BookingsTab> {
-  String? _selectedMerchant;
+  String? _selectedSalonId;
   DateTime? _selectedMonth;
+
+  @override
+  void initState() {
+    super.initState();
+    _selectedSalonId = widget.initialSalonId;
+    _selectedMonth = widget.initialMonth;
+  }
 
   @override
   Widget build(BuildContext context) {
     final merchants = _merchantOptions();
-    final merchantNames = merchants.map((merchant) => merchant.$2).toSet();
-    if (!merchantNames.contains(_selectedMerchant)) {
-      _selectedMerchant = merchantNames.isEmpty ? null : merchantNames.first;
+    final salonIds = merchants.map((merchant) => merchant.$3).toSet();
+    if (!salonIds.contains(_selectedSalonId)) {
+      _selectedSalonId = salonIds.isEmpty ? null : salonIds.first;
     }
     final months = _months(widget.bookings);
     if (!months.contains(_selectedMonth)) {
@@ -1215,28 +1633,24 @@ class _BookingsTabState extends State<_BookingsTab> {
     final selectedMonth = _selectedMonth;
     final orders = widget.bookings.where((order) {
       final sameMerchant =
-          _selectedMerchant == null || order.salonName == _selectedMerchant;
+          _selectedSalonId == null || order.salonId == _selectedSalonId;
       final completedAt = _completedAt(order);
       final sameMonth =
           selectedMonth == null || _isSameMonth(completedAt, selectedMonth);
       return sameMerchant && sameMonth;
     }).toList();
-    final amountTotal = orders.fold<double>(
-      0,
-      (total, order) => total + _amount(order.servicePrice),
-    );
-    final commissionTotal = amountTotal * 0.05;
+    final accounting = calculateOrderAccounting(orders);
 
     return ListView(
       padding: const EdgeInsets.all(20),
       children: [
-        Autocomplete<(String, String)>(
+        Autocomplete<(String, String, String)>(
           displayStringForOption: _merchantLabel,
           initialValue: TextEditingValue(
             text: _merchantLabel(
               merchants.firstWhere(
-                (merchant) => merchant.$2 == _selectedMerchant,
-                orElse: () => ('', ''),
+                (merchant) => merchant.$3 == _selectedSalonId,
+                orElse: () => ('', '', ''),
               ),
             ),
           ),
@@ -1249,7 +1663,7 @@ class _BookingsTabState extends State<_BookingsTab> {
             });
           },
           onSelected: (merchant) =>
-              setState(() => _selectedMerchant = merchant.$2),
+              setState(() => _selectedSalonId = merchant.$3),
           fieldViewBuilder:
               (context, controller, focusNode, onFieldSubmitted) => TextField(
                 controller: controller,
@@ -1283,33 +1697,60 @@ class _BookingsTabState extends State<_BookingsTab> {
           child: SingleChildScrollView(
             scrollDirection: Axis.horizontal,
             child: DataTable(
+              dataRowMinHeight: 56,
+              dataRowMaxHeight: 72,
               columns: const [
+                DataColumn(label: Text('序号'), numeric: true),
                 DataColumn(label: Text('订单编号')),
-                DataColumn(label: Text('完成日期')),
+                DataColumn(label: Text('用户信息')),
+                DataColumn(label: Text('下单时间')),
+                DataColumn(label: Text('订单状态')),
                 DataColumn(label: Text('订单交易额'), numeric: true),
                 DataColumn(label: Text('佣金'), numeric: true),
               ],
               rows: [
-                for (final order in orders)
+                for (final (index, order) in orders.indexed)
                   DataRow(
                     cells: [
-                      DataCell(Text(order.orderNo)),
+                      DataCell(_orderText(order, '${index + 1}')),
+                      DataCell(_orderText(order, order.orderNo)),
+                      DataCell(_orderText(order, _userContact(order))),
                       DataCell(
-                        Text(_dateFormatter.format(_completedAt(order))),
+                        _orderText(
+                          order,
+                          _dateTimeFormatter.format(order.createdAt),
+                        ),
                       ),
-                      DataCell(Text(_money(_amount(order.servicePrice)))),
+                      DataCell(_orderText(order, _orderStatus(order))),
                       DataCell(
-                        Text(_money(_amount(order.servicePrice) * 0.05)),
+                        _orderText(order, _money(_bookingAmount(order))),
+                      ),
+                      DataCell(
+                        _orderText(order, _money(_bookingAmount(order) * 0.05)),
                       ),
                     ],
                   ),
-                DataRow(
-                  cells: [
-                    const DataCell(Text('汇总')),
-                    const DataCell(Text('')),
-                    DataCell(Text(_money(amountTotal))),
-                    DataCell(Text(_money(commissionTotal))),
-                  ],
+                _accountingRow('总订单额', accounting.total),
+                _accountingRow(
+                  '未完成订单额',
+                  accounting.unfinished,
+                  count: accounting.unfinishedCount,
+                  deduction: true,
+                  color: Colors.amber.shade800,
+                ),
+                _accountingRow(
+                  '已取消订单额',
+                  accounting.canceled,
+                  count: accounting.canceledCount,
+                  deduction: true,
+                  color: Colors.red,
+                ),
+                _accountingRow(
+                  '核算结果',
+                  accounting.result,
+                  count: accounting.resultCount,
+                  bold: true,
+                  color: Colors.green,
                 ),
               ],
             ),
@@ -1324,35 +1765,44 @@ class _BookingsTabState extends State<_BookingsTab> {
     );
   }
 
-  static final _dateFormatter = DateFormat('yyyy-MM-dd');
+  static final _dateTimeFormatter = DateFormat('yyyy-MM-dd HH:mm');
   static final _moneyFormatter = NumberFormat.currency(
     locale: 'ja_JP',
     symbol: '¥',
     decimalDigits: 0,
   );
 
-  List<(String, String)> _merchantOptions() {
-    final options = <String, (String, String)>{
+  List<(String, String, String)> _merchantOptions() {
+    final options = <String, (String, String, String)>{
       for (final merchant in widget.merchants)
-        if ((merchant['salonName']?.toString() ?? '').isNotEmpty)
-          merchant['salonName'].toString(): (
+        if ((merchant['salonId']?.toString() ?? '').isNotEmpty)
+          merchant['salonId'].toString(): (
             merchant['username']?.toString() ?? '',
-            merchant['salonName'].toString(),
+            (merchant['salonName']?.toString() ?? '').isEmpty
+                ? merchant['salonId'].toString()
+                : merchant['salonName'].toString(),
+            merchant['salonId'].toString(),
           ),
     };
     for (final order in widget.bookings) {
-      options.putIfAbsent(order.salonName, () => ('', order.salonName));
+      if (order.salonId.isNotEmpty) {
+        options.putIfAbsent(
+          order.salonId,
+          () => ('', order.salonName, order.salonId),
+        );
+      }
     }
     final merchants = options.values.toList()
       ..sort((a, b) => _merchantLabel(a).compareTo(_merchantLabel(b)));
     return merchants;
   }
 
-  String _merchantLabel((String, String) merchant) =>
+  String _merchantLabel((String, String, String) merchant) =>
       merchant.$1.isEmpty ? merchant.$2 : '${merchant.$1} · ${merchant.$2}';
 
   List<DateTime> _months(List<BookingOrder> orders) {
     final months = {
+      ?widget.initialMonth,
       for (final order in orders)
         DateTime(_completedAt(order).year, _completedAt(order).month),
     }.toList()..sort((a, b) => b.compareTo(a));
@@ -1363,12 +1813,70 @@ class _BookingsTabState extends State<_BookingsTab> {
     return a.year == b.year && a.month == b.month;
   }
 
-  double _amount(String price) {
-    return double.tryParse(price.replaceAll(RegExp(r'[^0-9.]'), '')) ?? 0;
-  }
-
   DateTime _completedAt(BookingOrder order) =>
       order.completedAt ?? order.updatedAt;
+
+  DataRow _accountingRow(
+    String label,
+    double amount, {
+    int? count,
+    bool deduction = false,
+    bool bold = false,
+    Color? color,
+  }) {
+    final style = TextStyle(
+      color: color,
+      fontWeight: bold ? FontWeight.bold : null,
+    );
+    final value = deduction ? '-${_money(amount)}' : _money(amount);
+    return DataRow(
+      cells: [
+        const DataCell(Text('')),
+        DataCell(Text(count == null ? label : '$label（$count单）', style: style)),
+        const DataCell(Text('')),
+        const DataCell(Text('')),
+        const DataCell(Text('')),
+        DataCell(Text(value, style: style)),
+        DataCell(
+          Text(
+            deduction ? '-${_money(amount * 0.05)}' : _money(amount * 0.05),
+            style: style,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _orderText(BookingOrder order, String text) {
+    final color = switch (order.status) {
+      'canceled' || 'rejected' => Colors.red,
+      'pending' || 'accepted' => Colors.amber.shade800,
+      'completed' => Colors.blue,
+      _ => null,
+    };
+    return Text(text, style: TextStyle(color: color));
+  }
+
+  String _userContact(BookingOrder order) {
+    final userId = order.userId.replaceFirst(RegExp(r'^user-'), '');
+    for (final user in widget.users) {
+      if (user['id']?.toString() == userId) {
+        final phone = user['phone']?.toString() ?? '';
+        return '${order.userName}\n${phone.isEmpty ? '-' : phone}';
+      }
+    }
+    return '${order.userName}\n-';
+  }
+
+  String _orderStatus(BookingOrder order) {
+    if (order.status != 'canceled') return order.statusLabel;
+    final canceledBy = order.canceledBy.isNotEmpty
+        ? order.canceledBy
+        : order.merchantMessage.contains('用户已取消')
+        ? 'user'
+        : 'merchant';
+    return '${order.statusLabel}（${canceledBy == 'user' ? '用户取消' : '商家取消'}）';
+  }
 
   String _money(double value) => _moneyFormatter.format(value);
 }

@@ -244,7 +244,11 @@ class _MerchantSalonScreenState extends State<MerchantSalonScreen> {
         _services = _mapList(savedSalon['services']);
         _staff = _mapList(savedSalon['staff']);
       });
-      _showTopMessage('店铺信息已提交审核');
+      _showTopMessage(
+        savedSalon['contentReviewStatus'] == 'pending'
+            ? '需审核内容已提交审核'
+            : '免审核内容已保存并直接生效',
+      );
     } on SalonNameExistsException {
       if (!mounted) return;
       _showTopMessage('店名已存在，不能保存成功');
@@ -1099,9 +1103,19 @@ class _MerchantSalonScreenState extends State<MerchantSalonScreen> {
         }, maxLength: 100),
         _buildAddressFields(),
         _buildOpeningHoursSelector(),
-        _buildTextField('电话', _salon['phone'], (value) {
-          _salon['phone'] = value;
-        }, maxLength: 32),
+        _buildSameDayBookingSwitch(),
+        _buildTextField(
+          '电话',
+          _salon['phone'],
+          (value) {
+            _salon['phone'] = value;
+          },
+          maxLength: 32,
+          keyboardType: TextInputType.phone,
+          inputFormatters: [
+            FilteringTextInputFormatter.allow(RegExp(r'[0-9+()\- ]')),
+          ],
+        ),
         _buildTextField(
           '首页短介绍',
           _salon['description'],
@@ -1376,6 +1390,28 @@ class _MerchantSalonScreenState extends State<MerchantSalonScreen> {
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildSameDayBookingSwitch() {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      decoration: BoxDecoration(
+        color: AppTheme.bgCream,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: AppTheme.accentBeige),
+      ),
+      child: SwitchListTile(
+        title: const Text('可预约当天'),
+        subtitle: const Text(
+          '关闭后，客户无法预约当天时段',
+          style: TextStyle(color: Colors.red, fontSize: 12),
+        ),
+        value: _salon['acceptsSameDayBooking'] != false,
+        activeThumbColor: AppTheme.primaryPink,
+        onChanged: (value) =>
+            setState(() => _salon['acceptsSameDayBooking'] = value),
       ),
     );
   }
@@ -2493,6 +2529,8 @@ class _MerchantSalonScreenState extends State<MerchantSalonScreen> {
     int? maxLines = 1,
     bool expands = false,
     int? maxLength,
+    TextInputType? keyboardType,
+    List<TextInputFormatter>? inputFormatters,
   }) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
@@ -2501,6 +2539,8 @@ class _MerchantSalonScreenState extends State<MerchantSalonScreen> {
         maxLines: maxLines,
         expands: expands,
         maxLength: maxLength,
+        keyboardType: keyboardType,
+        inputFormatters: inputFormatters,
         onChanged: onChanged,
         decoration: InputDecoration(
           labelText: label,

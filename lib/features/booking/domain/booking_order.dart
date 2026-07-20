@@ -17,6 +17,7 @@ class BookingOrder {
   final String userMessage;
   final String merchantMessage;
   final String? rejectReason;
+  final String canceledBy;
   final bool reviewed;
   final Map<String, dynamic>? review;
   final DateTime? completedAt;
@@ -42,6 +43,7 @@ class BookingOrder {
     required this.userMessage,
     required this.merchantMessage,
     this.rejectReason,
+    this.canceledBy = '',
     this.reviewed = false,
     this.review,
     this.completedAt,
@@ -69,6 +71,7 @@ class BookingOrder {
       userMessage: json['userMessage'] as String? ?? '',
       merchantMessage: json['merchantMessage'] as String? ?? '',
       rejectReason: json['rejectReason'] as String?,
+      canceledBy: json['canceledBy']?.toString() ?? '',
       reviewed: json['reviewed'] as bool? ?? false,
       review: json['review'] is Map
           ? Map<String, dynamic>.from(json['review'] as Map)
