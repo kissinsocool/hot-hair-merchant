@@ -64,7 +64,7 @@ class _MerchantOrdersScreenState extends State<MerchantOrdersScreen> {
   bool _isLoading = true;
   bool _isUpdating = false;
   String _errorMessage = '';
-  DateTime? _selectedDate = DateUtils.dateOnly(DateTime.now());
+  DateTime? _selectedDate;
   String _selectedStaffId = '';
   int _selectedStatusTab = 0;
   List<BookingOrder> _orders = [];
@@ -103,7 +103,7 @@ class _MerchantOrdersScreenState extends State<MerchantOrdersScreen> {
 
     try {
       final results = await Future.wait([
-        _repository.fetchMerchantBookings(),
+        _repository.fetchMerchantBookings(date: _selectedDate),
         _salonRepository.fetchSalon(),
       ]);
       final orders = results[0] as List<BookingOrder>;
@@ -352,9 +352,19 @@ class _MerchantOrdersScreenState extends State<MerchantOrdersScreen> {
 
     final pageContext = context;
     final reply = review['merchantReply'];
-    final existingReply = reply is Map
+    final pendingReply = review['pendingMerchantReply'];
+    final publicReply = reply is Map
         ? reply['content']?.toString() ?? ''
         : reply?.toString() ?? '';
+    final pendingReplyText = pendingReply is Map
+        ? pendingReply['content']?.toString() ?? ''
+        : '';
+    final pendingReplyStatus = pendingReply is Map
+        ? pendingReply['reviewStatus']?.toString() ?? 'pending'
+        : '';
+    final existingReply = pendingReplyText.isNotEmpty
+        ? pendingReplyText
+        : publicReply;
     final replyController = TextEditingController(text: existingReply);
     var isSubmitting = false;
     var submitted = false;
@@ -424,6 +434,29 @@ class _MerchantOrdersScreenState extends State<MerchantOrdersScreen> {
                       ),
                     ],
                     const SizedBox(height: 16),
+                    if (pendingReplyText.isNotEmpty) ...[
+                      Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: pendingReplyStatus == 'rejected'
+                              ? Colors.red.withValues(alpha: 0.08)
+                              : Colors.orange.withValues(alpha: 0.08),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Text(
+                          pendingReplyStatus == 'rejected'
+                              ? '该回复已被驳回，请修改后重新提交'
+                              : '该回复正在审核中，通过后将公开展示',
+                          style: TextStyle(
+                            color: pendingReplyStatus == 'rejected'
+                                ? Colors.red
+                                : Colors.orange[800],
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                    ],
                     TextField(
                       controller: replyController,
                       maxLines: 3,
@@ -462,7 +495,7 @@ class _MerchantOrdersScreenState extends State<MerchantOrdersScreen> {
                           await _loadOrders(silent: true);
                           if (!pageContext.mounted) return;
                           ScaffoldMessenger.of(pageContext).showSnackBar(
-                            const SnackBar(content: Text('回复已提交')),
+                            const SnackBar(content: Text('回复已提交，审核通过后将公开展示')),
                           );
                           submitted = true;
                           if (context.mounted) Navigator.pop(context);
@@ -657,6 +690,12 @@ class _MerchantOrdersScreenState extends State<MerchantOrdersScreen> {
 
     if (pickedDate == null || !mounted) return;
     setState(() => _selectedDate = pickedDate);
+    await _loadOrders();
+  }
+
+  Future<void> _showToday() async {
+    setState(() => _selectedDate = null);
+    await _loadOrders();
   }
 
   bool _isSameDate(DateTime value, DateTime date) {
@@ -667,11 +706,11 @@ class _MerchantOrdersScreenState extends State<MerchantOrdersScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final selectedDate = _selectedDate ?? DateUtils.dateOnly(DateTime.now());
     final scopedOrders = _orders
         .where(
           (order) =>
-              (_selectedDate == null ||
-                  _isSameDate(order.startTime, _selectedDate!)) &&
+              _isSameDate(order.startTime, selectedDate) &&
               (_selectedStaffId.isEmpty || order.staffId == _selectedStaffId),
         )
         .toList();
@@ -815,13 +854,15 @@ class _MerchantOrdersScreenState extends State<MerchantOrdersScreen> {
   }
 
   Widget _buildDateFilter(int visibleCount) {
-    final hasFilter = _selectedDate != null;
-    final label = hasFilter ? _filterDateFormat.format(_selectedDate!) : '全部日期';
-    final subtitle = hasFilter
-        ? '显示当天 $visibleCount 单订单'
-        : '显示 $visibleCount 单订单';
+    final hasSelectedDate = _selectedDate != null;
+    final date = _selectedDate ?? DateUtils.dateOnly(DateTime.now());
+    final label = hasSelectedDate
+        ? _filterDateFormat.format(date)
+        : '今天 · ${_filterDateFormat.format(date)}';
+    final subtitle = '显示当天 $visibleCount 单订单';
 
     return Container(
+      height: 74,
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
       decoration: BoxDecoration(
         color: AppTheme.white,
@@ -867,11 +908,11 @@ class _MerchantOrdersScreenState extends State<MerchantOrdersScreen> {
             icon: const Icon(Icons.edit_calendar),
             color: AppTheme.primaryPink,
           ),
-          if (hasFilter)
+          if (hasSelectedDate)
             IconButton(
-              tooltip: '清除日期',
-              onPressed: () => setState(() => _selectedDate = null),
-              icon: const Icon(Icons.clear),
+              tooltip: '回到今天',
+              onPressed: _showToday,
+              icon: const Icon(Icons.today),
               color: Colors.grey[600],
             ),
         ],
@@ -881,7 +922,7 @@ class _MerchantOrdersScreenState extends State<MerchantOrdersScreen> {
 
   Widget _buildStaffFilter() {
     return Container(
-      height: 62,
+      height: 74,
       padding: const EdgeInsets.symmetric(horizontal: 14),
       decoration: BoxDecoration(
         color: AppTheme.white,

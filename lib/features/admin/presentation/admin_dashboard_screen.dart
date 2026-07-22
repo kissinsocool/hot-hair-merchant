@@ -1270,7 +1270,14 @@ class _ReviewsTab extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final reviews = items.where((item) => item['type'] == 'review').toList();
+    final reviews = items
+        .where(
+          (item) =>
+              item['type'] == 'review' ||
+              item['type'] == 'reviewEdit' ||
+              item['type'] == 'reviewReply',
+        )
+        .toList();
     final pending = reviews
         .where((item) => !isAuditedReviewStatus(item['status']))
         .toList();
@@ -1328,6 +1335,7 @@ class _ReviewsTab extends StatelessWidget {
               dataRowMinHeight: 76,
               dataRowMaxHeight: 120,
               columns: const [
+                DataColumn(label: Text('类型')),
                 DataColumn(label: Text('用户名')),
                 DataColumn(label: Text('评论内容')),
                 DataColumn(label: Text('图片')),
@@ -1340,6 +1348,13 @@ class _ReviewsTab extends StatelessWidget {
                 for (final item in reviews)
                   DataRow(
                     cells: [
+                      DataCell(
+                        Text(switch (item['type']) {
+                          'reviewReply' => '商家回复',
+                          'reviewEdit' => '评价修改',
+                          _ => '用户评论',
+                        }),
+                      ),
                       DataCell(Text(item['userName']?.toString() ?? '-')),
                       DataCell(
                         SizedBox(

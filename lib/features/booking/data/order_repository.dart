@@ -4,10 +4,16 @@ import '../domain/booking_order.dart';
 class OrderRepository {
   final ApiClient _apiClient = ApiClient();
 
-  Future<List<BookingOrder>> fetchMerchantBookings({String? status}) async {
+  Future<List<BookingOrder>> fetchMerchantBookings({
+    String? status,
+    DateTime? date,
+  }) async {
     final data = await _apiClient.requestAllPages(
       '/merchant/bookings',
-      queryParameters: {'status': ?status},
+      queryParameters: {
+        'status': ?status,
+        if (date != null) 'date': date.toIso8601String().split('T').first,
+      },
     );
 
     return data

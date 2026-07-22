@@ -274,6 +274,12 @@ class _MerchantSalonScreenState extends State<MerchantSalonScreen> {
     ]) {
       if (text(item.$2).isEmpty) return '请填写${item.$1}';
     }
+    if (text(_salon['fullDescription']).characters.length > 200) {
+      return '详情页关于我们不能超过200字';
+    }
+    if (text(_salon['description']).characters.length > 30) {
+      return '首页短介绍不能超过30字';
+    }
     if (_promoImages().isEmpty) return '请至少上传一张轮播图';
     if (_services.length > 50) return '服务套餐不能超过50个';
     if (_services.isEmpty) return '请至少添加一个服务套餐';
@@ -282,16 +288,25 @@ class _MerchantSalonScreenState extends State<MerchantSalonScreen> {
       if (service['tags'] is! List || (service['tags'] as List).isEmpty) {
         return '请为第${i + 1}个套餐至少选择一个标签';
       }
+      if ((service['tags'] as List).length > 3) {
+        return '第${i + 1}个套餐最多选择3个标签';
+      }
       for (final item in [
         ('第${i + 1}个套餐服务效果图', service['imageUrl']),
         ('第${i + 1}个套餐名称', service['name']),
         ('第${i + 1}个套餐价格', service['price']),
         ('第${i + 1}个套餐时长', service['duration']),
-        ('第${i + 1}个套餐备注', service['note']),
+        ('第${i + 1}个套餐简介', service['note']),
       ]) {
         if (text(item.$2).isEmpty || text(item.$2) == '¥') {
           return '请填写${item.$1}';
         }
+      }
+      if (text(service['name']).characters.length > 10) {
+        return '第${i + 1}个套餐名称不能超过10字';
+      }
+      if (text(service['note']).characters.length > 60) {
+        return '第${i + 1}个套餐简介不能超过60字';
       }
     }
     if (_staff.length > 50) return '理发师不能超过50人';
@@ -859,13 +874,20 @@ class _MerchantSalonScreenState extends State<MerchantSalonScreen> {
 
   Future<void> _uploadServiceImage(int index) async {
     final pickedImage = await _pickImageOrShowError();
-    if (pickedImage == null) return;
+    if (pickedImage == null || !mounted) return;
+    final croppedImage = await _cropPickedImage(
+      pickedImage,
+      title: '裁剪服务套餐图片（1:1）',
+      aspectRatio: 1,
+    );
+    if (croppedImage == null || !mounted) return;
+    final upload = _croppedUploadData(croppedImage, 'service');
 
     setState(() => _uploadingServiceIndex = index);
     try {
       final url = await _repository.uploadImage(
-        fileName: pickedImage.fileName,
-        base64Data: pickedImage.base64Data,
+        fileName: upload.fileName,
+        base64Data: upload.base64Data,
       );
       if (!mounted) return;
       setState(() => _services[index]['imageUrl'] = url);
@@ -1122,8 +1144,9 @@ class _MerchantSalonScreenState extends State<MerchantSalonScreen> {
           (value) {
             _salon['description'] = value;
           },
-          maxLines: 2,
-          maxLength: 500,
+          minLines: 3,
+          maxLines: 5,
+          maxLength: 30,
         ),
         _buildTextField(
           '详情页关于我们',
@@ -1131,8 +1154,9 @@ class _MerchantSalonScreenState extends State<MerchantSalonScreen> {
           (value) {
             _salon['fullDescription'] = value;
           },
-          maxLines: 4,
-          maxLength: 5000,
+          minLines: 5,
+          maxLines: 10,
+          maxLength: 200,
         ),
         _buildCoverImagesUploader(),
         _buildClosedDatesSection(),
@@ -1290,8 +1314,8 @@ class _MerchantSalonScreenState extends State<MerchantSalonScreen> {
       children: [
         TextFormField(
           controller: _addressController,
-          maxLines: 2,
-          minLines: 1,
+          maxLines: 3,
+          minLines: 2,
           onChanged: (value) => _salon['address'] = value.trim(),
           decoration: InputDecoration(
             hintText: '请重新定位生成店铺地址，也可以手动修改',
@@ -1464,7 +1488,7 @@ class _MerchantSalonScreenState extends State<MerchantSalonScreen> {
     return LayoutBuilder(
       builder: (context, constraints) {
         final imageWidth = constraints.maxWidth * 0.25;
-        const summaryHeight = 302.0;
+        const summaryHeight = 398.0;
         const imageModuleHeight = summaryHeight - 12;
 
         return Padding(
@@ -1484,7 +1508,7 @@ class _MerchantSalonScreenState extends State<MerchantSalonScreen> {
                     uploadedText: '已上传效果图',
                     isUploading: _uploadingServiceIndex == index,
                     onUpload: () => _uploadServiceImage(index),
-                    aspectRatio: 16 / 9,
+                    aspectRatio: 1,
                   ),
                 ),
                 const SizedBox(width: 12),
@@ -1495,7 +1519,7 @@ class _MerchantSalonScreenState extends State<MerchantSalonScreen> {
                       children: [
                         _buildTextField('套餐名称', service['name'], (value) {
                           service['name'] = value;
-                        }, maxLength: 100),
+                        }, maxLength: 10),
                         _buildServiceTags(service),
                         Row(
                           children: [
@@ -1508,14 +1532,14 @@ class _MerchantSalonScreenState extends State<MerchantSalonScreen> {
                         ),
                         Expanded(
                           child: _buildTextField(
-                            '备注',
+                            '简介',
                             service['note'],
                             (value) {
                               service['note'] = value;
                             },
                             maxLines: null,
                             expands: true,
-                            maxLength: 500,
+                            maxLength: 60,
                           ),
                         ),
                       ],
@@ -1621,7 +1645,7 @@ class _MerchantSalonScreenState extends State<MerchantSalonScreen> {
     return LayoutBuilder(
       builder: (context, constraints) {
         final imageWidth = constraints.maxWidth * 0.25;
-        const summaryHeight = 238.0;
+        const summaryHeight = 334.0;
         const imageModuleHeight = summaryHeight - 12;
 
         return Padding(
@@ -2032,10 +2056,12 @@ class _MerchantSalonScreenState extends State<MerchantSalonScreen> {
             return FilterChip(
               label: Text(tag),
               selected: selected.contains(tag),
-              onSelected: (checked) => setState(() {
-                checked ? selected.add(tag) : selected.remove(tag);
-                service['tags'] = selected.toList();
-              }),
+              onSelected: !selected.contains(tag) && selected.length >= 3
+                  ? null
+                  : (checked) => setState(() {
+                      checked ? selected.add(tag) : selected.remove(tag);
+                      service['tags'] = selected.toList();
+                    }),
             );
           }).toList(),
         ),
@@ -2526,6 +2552,7 @@ class _MerchantSalonScreenState extends State<MerchantSalonScreen> {
     String label,
     dynamic value,
     ValueChanged<String> onChanged, {
+    int? minLines,
     int? maxLines = 1,
     bool expands = false,
     int? maxLength,
@@ -2536,8 +2563,10 @@ class _MerchantSalonScreenState extends State<MerchantSalonScreen> {
       padding: const EdgeInsets.only(bottom: 12),
       child: TextFormField(
         initialValue: value?.toString() ?? '',
+        minLines: minLines,
         maxLines: maxLines,
         expands: expands,
+        textAlignVertical: expands ? TextAlignVertical.top : null,
         maxLength: maxLength,
         keyboardType: keyboardType,
         inputFormatters: inputFormatters,

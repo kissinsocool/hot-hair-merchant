@@ -2,8 +2,6 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
-import 'package:flutter_web_plugins/url_strategy.dart';
-
 import 'core/theme/app_theme.dart';
 import 'features/account/presentation/merchant_account_screen.dart';
 import 'features/admin/presentation/admin_dashboard_screen.dart';
@@ -15,7 +13,6 @@ import 'features/merchant/presentation/merchant_orders_screen.dart';
 import 'features/merchant/presentation/merchant_salon_screen.dart';
 
 void main() {
-  usePathUrlStrategy();
   runApp(const MerchantApp());
 }
 
