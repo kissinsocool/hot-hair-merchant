@@ -23,6 +23,11 @@ void main() {
     expect(find.text('商家登录'), findsOneWidget);
     expect(find.text('后台'), findsNothing);
     expect(find.byType(SegmentedButton<bool>), findsNothing);
+    expect(find.text('我已阅读并同意'), findsOneWidget);
+    expect(find.text('靓丝商家服务协议'), findsOneWidget);
+    expect(find.text('隐私政策'), findsOneWidget);
+    expect(find.text('靓丝商家服务规范'), findsNothing);
+    expect(find.byKey(const ValueKey('terms-unselected')), findsOneWidget);
   });
 
   testWidgets('shows admin login only for the admin portal', (tester) async {
@@ -33,6 +38,9 @@ void main() {
 
     expect(find.text('后台登录'), findsOneWidget);
     expect(find.text('商家登录'), findsNothing);
+    expect(find.text('靓丝商家服务协议'), findsNothing);
+    expect(find.text('隐私政策'), findsNothing);
+    expect(find.byKey(const ValueKey('terms-selection')), findsNothing);
   });
 
   test('parses booking timestamps as local time', () {
@@ -142,6 +150,17 @@ void main() {
     expect(totals.unfinishedCount, 2);
     expect(totals.canceledCount, 2);
     expect(totals.resultCount, 1);
+  });
+
+  test('matches support messages to user orders across id prefixes', () {
+    final order = _bookingOrder(
+      id: 'BK1',
+      staffId: 'S1',
+      startTime: DateTime(2026, 7, 24),
+    );
+
+    expect(supportOrdersForUser([order], 'user-${order.userId}'), [order]);
+    expect(supportOrdersForUser([order], 'another-user'), isEmpty);
   });
 
   test('recognizes final comment audit statuses', () {

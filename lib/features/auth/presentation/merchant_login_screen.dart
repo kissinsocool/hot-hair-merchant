@@ -1,5 +1,6 @@
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../../core/theme/app_theme.dart';
 import '../data/merchant_auth_repository.dart';
@@ -28,6 +29,7 @@ class _MerchantLoginScreenState extends State<MerchantLoginScreen> {
 
   bool _isLoading = false;
   bool _obscurePassword = true;
+  bool _agreedToTerms = false;
   String _errorMessage = '';
 
   @override
@@ -38,6 +40,10 @@ class _MerchantLoginScreenState extends State<MerchantLoginScreen> {
   }
 
   Future<void> _submit() async {
+    if (!widget.admin && !_agreedToTerms) {
+      setState(() => _errorMessage = '请先阅读并同意相关协议与规则');
+      return;
+    }
     if (!_formKey.currentState!.validate()) return;
 
     setState(() {
@@ -72,6 +78,18 @@ class _MerchantLoginScreenState extends State<MerchantLoginScreen> {
       setState(() => _errorMessage = '登录失败，请稍后重试');
     } finally {
       if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  Future<void> _openDocument(String path) async {
+    final opened = await launchUrl(
+      Uri.base.resolve(path),
+      webOnlyWindowName: '_blank',
+    );
+    if (!opened && mounted) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('无法打开协议，请稍后重试')));
     }
   }
 
@@ -195,6 +213,81 @@ class _MerchantLoginScreenState extends State<MerchantLoginScreen> {
                         label: const Text('登录'),
                       ),
                     ),
+                    if (!widget.admin) ...[
+                      const SizedBox(height: 8),
+                      Wrap(
+                        alignment: WrapAlignment.center,
+                        crossAxisAlignment: WrapCrossAlignment.center,
+                        children: [
+                          Semantics(
+                            key: const ValueKey('terms-selection'),
+                            button: true,
+                            toggled: _agreedToTerms,
+                            child: MouseRegion(
+                              cursor: SystemMouseCursors.click,
+                              child: GestureDetector(
+                                behavior: HitTestBehavior.opaque,
+                                onTap: () => setState(
+                                  () => _agreedToTerms = !_agreedToTerms,
+                                ),
+                                child: SizedBox(
+                                  width: 24,
+                                  height: 24,
+                                  child: Center(
+                                    child: AnimatedSwitcher(
+                                      duration: const Duration(
+                                        milliseconds: 160,
+                                      ),
+                                      child: _agreedToTerms
+                                          ? const Icon(
+                                              Icons.check_circle,
+                                              key: ValueKey('terms-selected'),
+                                              color: AppTheme.primaryPink,
+                                              size: 14,
+                                            )
+                                          : Container(
+                                              key: const ValueKey(
+                                                'terms-unselected',
+                                              ),
+                                              width: 14,
+                                              height: 14,
+                                              decoration: BoxDecoration(
+                                                shape: BoxShape.circle,
+                                                border: Border.all(
+                                                  color: const Color(
+                                                    0xFFBDBDBD,
+                                                  ),
+                                                ),
+                                              ),
+                                            ),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                          const Text('我已阅读并同意'),
+                          TextButton(
+                            style: _documentButtonStyle,
+                            onPressed: () => _openDocument(
+                              'assets/merchant-service-agreement.html',
+                            ),
+                            child: const Text('靓丝商家服务协议'),
+                          ),
+                          const Text(
+                            '、',
+                            style: TextStyle(color: AppTheme.primaryPink),
+                          ),
+                          TextButton(
+                            style: _documentButtonStyle,
+                            onPressed: () => _openDocument(
+                              'assets/merchant-account-privacy-policy.html',
+                            ),
+                            child: const Text('隐私政策'),
+                          ),
+                        ],
+                      ),
+                    ],
                   ],
                 ),
               ),
@@ -204,6 +297,15 @@ class _MerchantLoginScreenState extends State<MerchantLoginScreen> {
       ),
     );
   }
+
+  ButtonStyle get _documentButtonStyle => TextButton.styleFrom(
+    foregroundColor: AppTheme.primaryPink,
+    backgroundColor: Colors.transparent,
+    overlayColor: Colors.transparent,
+    padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 8),
+    minimumSize: Size.zero,
+    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+  );
 
   InputDecoration _inputDecoration({
     required String label,

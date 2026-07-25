@@ -149,6 +149,11 @@ class AdminRepository {
     return data.map((item) => Map<String, dynamic>.from(item as Map)).toList();
   }
 
+  Future<List<Map<String, dynamic>>> fetchSupportMessages() async {
+    final data = await _apiClient.requestAllPages('/admin/support-messages');
+    return data.map((item) => Map<String, dynamic>.from(item as Map)).toList();
+  }
+
   Future<void> manageUserImage({
     required String bookingId,
     required String type,

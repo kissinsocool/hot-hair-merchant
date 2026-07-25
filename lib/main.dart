@@ -28,6 +28,12 @@ class MerchantApp extends StatelessWidget {
       locale: const Locale('zh', 'CN'),
       localizationsDelegates: GlobalMaterialLocalizations.delegates,
       supportedLocales: const [Locale('zh', 'CN')],
+      builder: (context, child) => MediaQuery(
+        data: MediaQuery.of(
+          context,
+        ).copyWith(textScaler: const TextScaler.linear(0.9375)),
+        child: child!,
+      ),
       routes: {
         '/': (_) => const MerchantAuthGate(),
         '/admin': (_) => const MerchantAuthGate(admin: true),

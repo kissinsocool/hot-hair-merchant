@@ -56,6 +56,20 @@ double _bookingAmount(BookingOrder order) =>
 bool isAuditedReviewStatus(dynamic status) =>
     status == 'approved' || status == 'rejected';
 
+List<BookingOrder> supportOrdersForUser(
+  Iterable<BookingOrder> orders,
+  dynamic userId,
+) {
+  final normalized = userId?.toString().replaceFirst(RegExp(r'^user-'), '');
+  if (normalized == null || normalized.isEmpty) return [];
+  return orders
+      .where(
+        (order) =>
+            order.userId.replaceFirst(RegExp(r'^user-'), '') == normalized,
+      )
+      .toList();
+}
+
 class AdminDashboardScreen extends StatefulWidget {
   const AdminDashboardScreen({super.key, required this.onLogout});
 
@@ -74,6 +88,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
   List<Map<String, dynamic>> _users = [];
   List<BookingOrder> _bookings = [];
   List<Map<String, dynamic>> _userImages = [];
+  List<Map<String, dynamic>> _supportMessages = [];
   Map<String, dynamic> _ad = {};
 
   @override
@@ -92,6 +107,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
         _repository.fetchBookings(),
         _repository.fetchUserImages(),
         _repository.fetchAd(),
+        _repository.fetchSupportMessages(),
       ]);
       if (!mounted) return;
       setState(() {
@@ -101,6 +117,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
         _bookings = results[3] as List<BookingOrder>;
         _userImages = results[4] as List<Map<String, dynamic>>;
         _ad = results[5] as Map<String, dynamic>;
+        _supportMessages = results[6] as List<Map<String, dynamic>>;
       });
     } on DioException catch (error) {
       if (error.response?.statusCode == 401) {
@@ -126,7 +143,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
   @override
   Widget build(BuildContext context) {
     return DefaultTabController(
-      length: 6,
+      length: 7,
       child: Scaffold(
         backgroundColor: AppTheme.bgCream,
         appBar: AppBar(
@@ -154,6 +171,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
               Tab(icon: Icon(Icons.people_outline), text: '客户端用户'),
               Tab(icon: Icon(Icons.rate_review_outlined), text: '评论管理'),
               Tab(icon: Icon(Icons.report_outlined), text: '投诉管理'),
+              Tab(icon: Icon(Icons.support_agent_outlined), text: '客服消息'),
               Tab(icon: Icon(Icons.campaign_outlined), text: '广告位'),
             ],
           ),
@@ -179,9 +197,72 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                   _UsersTab(users: _users),
                   _ReviewsTab(items: _userImages, onAction: _manageReview),
                   _ComplaintsTab(items: _userImages, users: _users),
+                  _SupportMessagesTab(
+                    messages: _supportMessages,
+                    onViewOrders: _showSupportOrdersDialog,
+                  ),
                   _AdTab(config: _ad, onSave: _saveAd),
                 ],
               ),
+      ),
+    );
+  }
+
+  Future<void> _showSupportOrdersDialog(Map<String, dynamic> message) async {
+    final orders = supportOrdersForUser(_bookings, message['userId']);
+    final size = MediaQuery.sizeOf(context);
+    await showDialog<void>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text('${message['userName'] ?? '用户'} · 关联订单'),
+        content: SizedBox(
+          width: min(900, size.width - 80),
+          height: min(520, size.height - 180),
+          child: orders.isEmpty
+              ? const Center(child: Text('该用户暂无关联订单'))
+              : SingleChildScrollView(
+                  child: SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    child: DataTable(
+                      columns: const [
+                        DataColumn(label: Text('订单号')),
+                        DataColumn(label: Text('商家姓名')),
+                        DataColumn(label: Text('下单时间')),
+                        DataColumn(label: Text('订单状态')),
+                      ],
+                      rows: [
+                        for (final order in orders)
+                          DataRow(
+                            cells: [
+                              DataCell(
+                                Text(
+                                  order.orderNo.isEmpty
+                                      ? order.id
+                                      : order.orderNo,
+                                ),
+                              ),
+                              DataCell(Text(order.salonName)),
+                              DataCell(
+                                Text(
+                                  DateFormat(
+                                    'yyyy-MM-dd HH:mm',
+                                  ).format(order.createdAt),
+                                ),
+                              ),
+                              DataCell(Text(order.statusLabel)),
+                            ],
+                          ),
+                      ],
+                    ),
+                  ),
+                ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('关闭'),
+          ),
+        ],
       ),
     );
   }
@@ -1496,6 +1577,67 @@ class _ComplaintsTab extends StatelessWidget {
       }
     }
     return '-';
+  }
+}
+
+class _SupportMessagesTab extends StatelessWidget {
+  const _SupportMessagesTab({
+    required this.messages,
+    required this.onViewOrders,
+  });
+
+  final List<Map<String, dynamic>> messages;
+  final ValueChanged<Map<String, dynamic>> onViewOrders;
+
+  @override
+  Widget build(BuildContext context) {
+    if (messages.isEmpty) {
+      return const Center(child: Text('暂无客服消息'));
+    }
+    return ListView(
+      padding: const EdgeInsets.all(20),
+      children: [
+        Container(
+          decoration: _panelDecoration(),
+          child: SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: DataTable(
+              dataRowMinHeight: 72,
+              dataRowMaxHeight: 140,
+              columns: const [
+                DataColumn(label: Text('用户')),
+                DataColumn(label: Text('问题描述')),
+                DataColumn(label: Text('联系方式')),
+                DataColumn(label: Text('提交时间')),
+                DataColumn(label: Text('关联订单')),
+              ],
+              rows: [
+                for (final message in messages)
+                  DataRow(
+                    cells: [
+                      DataCell(Text(message['userName']?.toString() ?? '-')),
+                      DataCell(
+                        SizedBox(
+                          width: 420,
+                          child: Text(message['problem']?.toString() ?? '-'),
+                        ),
+                      ),
+                      DataCell(Text(message['contact']?.toString() ?? '-')),
+                      DataCell(Text(_itemTime(message['createdAt']))),
+                      DataCell(
+                        TextButton(
+                          onPressed: () => onViewOrders(message),
+                          child: const Text('关联订单'),
+                        ),
+                      ),
+                    ],
+                  ),
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
   }
 }
 
