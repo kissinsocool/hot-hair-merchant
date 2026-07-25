@@ -12,12 +12,24 @@ import '../data/merchant_salon_repository.dart';
 
 enum _RescheduleAction { previous }
 
-const merchantOrderStatusTabs = <(String, Set<String>)>[
-  ('待确认', {'pending'}),
-  ('待完成', {'accepted'}),
-  ('已完成', {'completed'}),
-  ('已取消', {'canceled', 'rejected'}),
+const merchantOrderStatusTabs = <(String, Set<String>, Color)>[
+  ('待处理', {'pending'}, Colors.red),
+  ('待完成', {'accepted'}, Colors.orange),
+  ('已完成', {'completed'}, Colors.blue),
+  ('已取消', {'canceled', 'rejected'}, Colors.grey),
 ];
+
+bool isMerchantOrderVisible(
+  BookingOrder order,
+  DateTime? selectedDate,
+  String selectedStaffId,
+) {
+  if (selectedStaffId.isNotEmpty && order.staffId != selectedStaffId) {
+    return false;
+  }
+  if (order.status == 'pending' || selectedDate == null) return true;
+  return DateUtils.isSameDay(order.startTime, selectedDate);
+}
 
 bool isBookingSlotEnabled(
   Map<String, dynamic> slot,
@@ -64,7 +76,7 @@ class _MerchantOrdersScreenState extends State<MerchantOrdersScreen> {
   bool _isLoading = true;
   bool _isUpdating = false;
   String _errorMessage = '';
-  DateTime? _selectedDate;
+  DateTime? _selectedDate = DateUtils.dateOnly(DateTime.now());
   String _selectedStaffId = '';
   int _selectedStatusTab = 0;
   List<BookingOrder> _orders = [];
@@ -103,7 +115,7 @@ class _MerchantOrdersScreenState extends State<MerchantOrdersScreen> {
 
     try {
       final results = await Future.wait([
-        _repository.fetchMerchantBookings(date: _selectedDate),
+        _repository.fetchMerchantBookings(),
         _salonRepository.fetchSalon(),
       ]);
       final orders = results[0] as List<BookingOrder>;
@@ -690,30 +702,24 @@ class _MerchantOrdersScreenState extends State<MerchantOrdersScreen> {
 
     if (pickedDate == null || !mounted) return;
     setState(() => _selectedDate = pickedDate);
-    await _loadOrders();
   }
 
-  Future<void> _showToday() async {
+  void _showAllOrders() {
     setState(() => _selectedDate = null);
-    await _loadOrders();
-  }
-
-  bool _isSameDate(DateTime value, DateTime date) {
-    return value.year == date.year &&
-        value.month == date.month &&
-        value.day == date.day;
   }
 
   @override
   Widget build(BuildContext context) {
-    final selectedDate = _selectedDate ?? DateUtils.dateOnly(DateTime.now());
     final scopedOrders = _orders
         .where(
           (order) =>
-              _isSameDate(order.startTime, selectedDate) &&
-              (_selectedStaffId.isEmpty || order.staffId == _selectedStaffId),
+              isMerchantOrderVisible(order, _selectedDate, _selectedStaffId),
         )
         .toList();
+    final statusCounts = [
+      for (final tab in merchantOrderStatusTabs)
+        scopedOrders.where((order) => tab.$2.contains(order.status)).length,
+    ];
     final filteredOrders = scopedOrders
         .where(
           (order) => merchantOrderStatusTabs[_selectedStatusTab].$2.contains(
@@ -780,7 +786,7 @@ class _MerchantOrdersScreenState extends State<MerchantOrdersScreen> {
               ),
             ),
             const SizedBox(height: 12),
-            PageWidth(child: _buildStatusTabs()),
+            PageWidth(child: _buildStatusTabs(statusCounts)),
             const SizedBox(height: 18),
             if (_isLoading)
               const Padding(
@@ -856,10 +862,10 @@ class _MerchantOrdersScreenState extends State<MerchantOrdersScreen> {
   Widget _buildDateFilter(int visibleCount) {
     final hasSelectedDate = _selectedDate != null;
     final date = _selectedDate ?? DateUtils.dateOnly(DateTime.now());
-    final label = hasSelectedDate
-        ? _filterDateFormat.format(date)
-        : '今天 · ${_filterDateFormat.format(date)}';
-    final subtitle = '显示当天 $visibleCount 单订单';
+    final label = hasSelectedDate ? _filterDateFormat.format(date) : '全部订单';
+    final subtitle = hasSelectedDate
+        ? '待处理及当天订单 $visibleCount 单'
+        : '显示全部 $visibleCount 单订单';
 
     return Container(
       height: 74,
@@ -910,9 +916,9 @@ class _MerchantOrdersScreenState extends State<MerchantOrdersScreen> {
           ),
           if (hasSelectedDate)
             IconButton(
-              tooltip: '回到今天',
-              onPressed: _showToday,
-              icon: const Icon(Icons.today),
+              tooltip: '显示全部订单',
+              onPressed: _showAllOrders,
+              icon: const Icon(Icons.close),
               color: Colors.grey[600],
             ),
         ],
@@ -970,7 +976,7 @@ class _MerchantOrdersScreenState extends State<MerchantOrdersScreen> {
     );
   }
 
-  Widget _buildStatusTabs() {
+  Widget _buildStatusTabs(List<int> statusCounts) {
     return Container(
       decoration: BoxDecoration(
         color: AppTheme.white,
@@ -990,7 +996,18 @@ class _MerchantOrdersScreenState extends State<MerchantOrdersScreen> {
           dividerColor: Colors.transparent,
           labelColor: AppTheme.textDark,
           unselectedLabelColor: Colors.grey[600],
-          tabs: [for (final tab in merchantOrderStatusTabs) Tab(text: tab.$1)],
+          tabs: [
+            for (var i = 0; i < merchantOrderStatusTabs.length; i++)
+              Tab(
+                child: Text(
+                  '${merchantOrderStatusTabs[i].$1}（${statusCounts[i]}）',
+                  style: TextStyle(
+                    color: merchantOrderStatusTabs[i].$3,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+          ],
         ),
       ),
     );

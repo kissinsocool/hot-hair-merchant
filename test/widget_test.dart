@@ -126,8 +126,27 @@ void main() {
   test('groups canceled and rejected orders in the canceled tab', () {
     final canceledStatuses = merchantOrderStatusTabs[3].$2;
 
+    expect(merchantOrderStatusTabs[3].$1, '已取消');
     expect(canceledStatuses, containsAll(['canceled', 'rejected']));
     expect(canceledStatuses, isNot(contains('completed')));
+  });
+
+  test('date filtering does not hide pending merchant orders', () {
+    final selectedDate = DateTime(2026, 7, 25);
+    final oldPending = _bookingOrder(
+      id: 'pending',
+      startTime: DateTime(2026, 7, 20),
+      status: 'pending',
+    );
+    final oldCompleted = _bookingOrder(
+      id: 'completed',
+      startTime: DateTime(2026, 7, 20),
+      status: 'completed',
+    );
+
+    expect(isMerchantOrderVisible(oldPending, selectedDate, ''), isTrue);
+    expect(isMerchantOrderVisible(oldCompleted, selectedDate, ''), isFalse);
+    expect(isMerchantOrderVisible(oldCompleted, null, ''), isTrue);
   });
 
   test('accounting deducts unfinished and canceled orders', () {
