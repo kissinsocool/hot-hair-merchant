@@ -21,6 +21,12 @@ class BookingOrder {
   final bool reviewed;
   final Map<String, dynamic>? review;
   final DateTime? completedAt;
+  final int originalAmountFen;
+  final String couponId;
+  final String couponCode;
+  final String couponTitle;
+  final int couponDiscountFen;
+  final int payableAmountFen;
   final DateTime createdAt;
   final DateTime updatedAt;
 
@@ -47,6 +53,12 @@ class BookingOrder {
     this.reviewed = false,
     this.review,
     this.completedAt,
+    this.originalAmountFen = 0,
+    this.couponId = '',
+    this.couponCode = '',
+    this.couponTitle = '',
+    this.couponDiscountFen = 0,
+    this.payableAmountFen = 0,
     required this.createdAt,
     required this.updatedAt,
   });
@@ -79,6 +91,12 @@ class BookingOrder {
       completedAt: json['completedAt'] == null
           ? null
           : DateTime.parse(json['completedAt'] as String).toLocal(),
+      originalAmountFen: (json['originalAmountFen'] as num?)?.toInt() ?? 0,
+      couponId: json['couponId']?.toString() ?? '',
+      couponCode: json['couponCode']?.toString() ?? '',
+      couponTitle: json['couponTitle']?.toString() ?? '',
+      couponDiscountFen: (json['couponDiscountFen'] as num?)?.toInt() ?? 0,
+      payableAmountFen: (json['payableAmountFen'] as num?)?.toInt() ?? 0,
       createdAt: DateTime.parse(json['createdAt'] as String).toLocal(),
       updatedAt: DateTime.parse(json['updatedAt'] as String).toLocal(),
     );

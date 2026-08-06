@@ -35,6 +35,24 @@ class AdminRepository {
     return Map<String, dynamic>.from(response.data as Map);
   }
 
+  Future<Map<String, dynamic>> fetchCouponCampaign() async {
+    final response = await _apiClient.request(
+      '/admin/campaigns/new-user-registration',
+    );
+    return Map<String, dynamic>.from(response.data as Map);
+  }
+
+  Future<Map<String, dynamic>> saveCouponCampaign(
+    Map<String, dynamic> campaign,
+  ) async {
+    final response = await _apiClient.request(
+      '/admin/campaigns/new-user-registration',
+      method: 'PATCH',
+      data: campaign,
+    );
+    return Map<String, dynamic>.from(response.data as Map);
+  }
+
   Future<List<Map<String, dynamic>>> fetchMerchants() async {
     final data = await _apiClient.requestAllPages('/admin/merchants');
     return data.map((item) => Map<String, dynamic>.from(item as Map)).toList();
@@ -46,6 +64,7 @@ class AdminRepository {
     required String password,
     required String salonId,
     required String deposit,
+    required List<String> tags,
   }) async {
     final response = await _apiClient.request(
       '/admin/merchants',
@@ -56,6 +75,7 @@ class AdminRepository {
         'password': password,
         'salonId': salonId,
         'deposit': deposit,
+        'tags': tags,
       },
     );
     final data = Map<String, dynamic>.from(response.data as Map);
@@ -68,6 +88,7 @@ class AdminRepository {
     required String displayName,
     required String salonId,
     required String deposit,
+    required List<String> tags,
     String password = '',
   }) async {
     final response = await _apiClient.request(
@@ -78,6 +99,7 @@ class AdminRepository {
         'displayName': displayName,
         'salonId': salonId,
         'deposit': deposit,
+        'tags': tags,
         'password': password,
       },
     );
@@ -129,6 +151,20 @@ class AdminRepository {
   Future<List<Map<String, dynamic>>> fetchUsers() async {
     final data = await _apiClient.requestAllPages('/admin/users');
     return data.map((item) => Map<String, dynamic>.from(item as Map)).toList();
+  }
+
+  Future<Map<String, dynamic>> reviewUserAvatar({
+    required String id,
+    required bool approve,
+    String reason = '',
+  }) async {
+    final response = await _apiClient.request(
+      '/admin/users/$id/avatar',
+      method: 'PATCH',
+      data: {'action': approve ? 'approve' : 'reject', 'reason': reason},
+    );
+    final data = Map<String, dynamic>.from(response.data as Map);
+    return Map<String, dynamic>.from(data['user'] as Map);
   }
 
   Future<List<BookingOrder>> fetchBookings() async {

@@ -26,7 +26,7 @@ class ApiClient {
   static String? authToken;
   static const String _apiBaseUrl = String.fromEnvironment(
     'API_BASE_URL',
-    defaultValue: 'http://182.92.129.180:3000/api',
+    defaultValue: 'https://api.hothaircc.cn/api',
   );
 
   Future<Response<dynamic>> request(

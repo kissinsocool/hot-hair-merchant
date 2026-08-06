@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hot_pepper_merchant/features/auth/data/merchant_auth_repository.dart';
 import 'package:hot_pepper_merchant/features/auth/presentation/merchant_login_screen.dart';
@@ -41,6 +42,36 @@ void main() {
     expect(find.text('靓丝商家服务协议'), findsNothing);
     expect(find.text('隐私政策'), findsNothing);
     expect(find.byKey(const ValueKey('terms-selection')), findsNothing);
+  });
+
+  testWidgets('handles a document launch failure without an uncaught error', (
+    tester,
+  ) async {
+    const channel = MethodChannel('plugins.flutter.io/url_launcher');
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(
+          channel,
+          (_) => throw PlatformException(code: 'unavailable'),
+        );
+    addTearDown(
+      () => TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(channel, null),
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: MerchantLoginScreen(
+          repository: MerchantAuthRepository(),
+          onLoggedIn: (_) {},
+        ),
+      ),
+    );
+
+    await tester.tap(find.text('靓丝商家服务协议'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('无法打开协议，请稍后重试'), findsOneWidget);
+    expect(tester.takeException(), isNull);
   });
 
   test('parses booking timestamps as local time', () {
@@ -186,6 +217,13 @@ void main() {
     expect(isAuditedReviewStatus('pending'), isFalse);
     expect(isAuditedReviewStatus('approved'), isTrue);
     expect(isAuditedReviewStatus('rejected'), isTrue);
+  });
+
+  test('labels every avatar review state for the admin user table', () {
+    expect(avatarReviewStatusLabel('pending'), '待审核');
+    expect(avatarReviewStatusLabel('approved'), '已通过');
+    expect(avatarReviewStatusLabel('rejected'), '已驳回');
+    expect(avatarReviewStatusLabel(null), '未提交');
   });
 }
 

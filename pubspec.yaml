@@ -66,6 +66,7 @@ flutter:
   # the material Icons class.
   uses-material-design: true
   assets:
+    - THIRD_PARTY_NOTICES.md
     - merchant-service-agreement.html
     - merchant-account-privacy-policy.html
     - merchant-service-standards.html

@@ -50,11 +50,36 @@ calculateOrderAccounting(Iterable<BookingOrder> orders) {
   );
 }
 
-double _bookingAmount(BookingOrder order) =>
-    double.tryParse(order.servicePrice.replaceAll(RegExp(r'[^0-9.]'), '')) ?? 0;
+double _bookingAmount(BookingOrder order) => order.couponId.isNotEmpty
+    ? order.payableAmountFen / 100
+    : double.tryParse(order.servicePrice.replaceAll(RegExp(r'[^0-9.]'), '')) ??
+          0;
+
+bool isAbnormalAccountingOrder(BookingOrder order, [DateTime? now]) =>
+    {'pending', 'accepted'}.contains(order.status) &&
+    order.startTime.isBefore(now ?? DateTime.now());
+
+int? pendingOrderOverdueHours(BookingOrder order, [DateTime? now]) {
+  if (order.status != 'pending') return null;
+  final elapsed = (now ?? DateTime.now()).difference(order.createdAt);
+  return elapsed > const Duration(hours: 1) ? elapsed.inHours : null;
+}
 
 bool isAuditedReviewStatus(dynamic status) =>
     status == 'approved' || status == 'rejected';
+
+String avatarReviewStatusLabel(dynamic status) => switch (status) {
+  'pending' => '待审核',
+  'approved' => '已通过',
+  'rejected' => '已驳回',
+  _ => '未提交',
+};
+
+DateTime campaignDayStart(DateTime date) =>
+    DateTime(date.year, date.month, date.day);
+
+DateTime campaignDayEnd(DateTime date) =>
+    DateTime(date.year, date.month, date.day + 1);
 
 List<BookingOrder> supportOrdersForUser(
   Iterable<BookingOrder> orders,
@@ -90,6 +115,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
   List<Map<String, dynamic>> _userImages = [];
   List<Map<String, dynamic>> _supportMessages = [];
   Map<String, dynamic> _ad = {};
+  Map<String, dynamic> _couponCampaign = {};
 
   @override
   void initState() {
@@ -108,6 +134,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
         _repository.fetchUserImages(),
         _repository.fetchAd(),
         _repository.fetchSupportMessages(),
+        _repository.fetchCouponCampaign(),
       ]);
       if (!mounted) return;
       setState(() {
@@ -118,6 +145,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
         _userImages = results[4] as List<Map<String, dynamic>>;
         _ad = results[5] as Map<String, dynamic>;
         _supportMessages = results[6] as List<Map<String, dynamic>>;
+        _couponCampaign = results[7] as Map<String, dynamic>;
       });
     } on DioException catch (error) {
       if (error.response?.statusCode == 401) {
@@ -143,7 +171,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
   @override
   Widget build(BuildContext context) {
     return DefaultTabController(
-      length: 7,
+      length: 8,
       child: Scaffold(
         backgroundColor: AppTheme.bgCream,
         appBar: AppBar(
@@ -173,6 +201,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
               Tab(icon: Icon(Icons.report_outlined), text: '投诉管理'),
               Tab(icon: Icon(Icons.support_agent_outlined), text: '客服消息'),
               Tab(icon: Icon(Icons.campaign_outlined), text: '广告位'),
+              Tab(icon: Icon(Icons.local_activity_outlined), text: '活动管理'),
             ],
           ),
         ),
@@ -194,7 +223,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                     onViewContent: _showContentDialog,
                     onViewOrders: _showMerchantOrdersDialog,
                   ),
-                  _UsersTab(users: _users),
+                  _UsersTab(users: _users, onReviewAvatar: _reviewUserAvatar),
                   _ReviewsTab(items: _userImages, onAction: _manageReview),
                   _ComplaintsTab(items: _userImages, users: _users),
                   _SupportMessagesTab(
@@ -202,10 +231,30 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                     onViewOrders: _showSupportOrdersDialog,
                   ),
                   _AdTab(config: _ad, onSave: _saveAd),
+                  _CouponCampaignTab(
+                    data: _couponCampaign,
+                    onSave: _saveCouponCampaign,
+                  ),
                 ],
               ),
       ),
     );
+  }
+
+  Future<void> _saveCouponCampaign(Map<String, dynamic> campaign) async {
+    try {
+      final result = await _repository.saveCouponCampaign(campaign);
+      if (!mounted) return;
+      setState(() => _couponCampaign = result);
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('活动配置已保存')));
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(_saveError(error))));
+    }
   }
 
   Future<void> _showSupportOrdersDialog(Map<String, dynamic> message) async {
@@ -470,6 +519,35 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
     }
   }
 
+  Future<void> _reviewUserAvatar(
+    Map<String, dynamic> user,
+    bool approve,
+  ) async {
+    final reason = approve ? '' : await _rejectReason('驳回用户头像');
+    if (!approve && reason.isEmpty) return;
+    try {
+      await _repository.reviewUserAvatar(
+        id: user['id'].toString(),
+        approve: approve,
+        reason: reason,
+      );
+      await _load();
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(approve ? '头像已通过' : '头像已驳回')));
+    } catch (error) {
+      if (!mounted) return;
+      if (error is DioException && error.response?.statusCode == 401) {
+        widget.onLogout();
+        return;
+      }
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(_saveError(error))));
+    }
+  }
+
   Future<String> _rejectReason(String title) async {
     final controller = TextEditingController();
     final reason =
@@ -624,6 +702,9 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
 
   Future<void> _showMerchantDialog({Map<String, dynamic>? merchant}) async {
     final isEditing = merchant != null;
+    final salon = Map<String, dynamic>.from(
+      (merchant?['salon'] as Map?) ?? const {},
+    );
     final usernameController = TextEditingController(
       text: merchant?['username']?.toString() ?? _randomMerchantUsername(),
     );
@@ -636,91 +717,168 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
     final passwordController = TextEditingController(
       text: isEditing ? '' : '123456',
     );
+    final selectedTags = ((salon['tags'] as List?) ?? const [])
+        .map((tag) => tag.toString())
+        .where((tag) => tag.isNotEmpty)
+        .toSet();
+    final availableTags = <String>{...selectedTags};
+    final customTagController = TextEditingController();
 
     final saved = await showDialog<bool>(
       context: context,
-      builder: (context) => AlertDialog(
-        title: Text(isEditing ? '编辑商家账号' : '新增商家账号'),
-        content: SizedBox(
-          width: 420,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextField(
-                controller: usernameController,
-                maxLength: 100,
-                decoration: const InputDecoration(labelText: '登录账号'),
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: Text(isEditing ? '编辑商家账号' : '新增商家账号'),
+          content: SizedBox(
+            width: 420,
+            child: SingleChildScrollView(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  TextField(
+                    controller: usernameController,
+                    maxLength: 100,
+                    decoration: const InputDecoration(labelText: '登录账号'),
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: salonIdController,
+                    maxLength: 100,
+                    decoration: const InputDecoration(labelText: '店铺ID'),
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: depositController,
+                    keyboardType: TextInputType.number,
+                    decoration: const InputDecoration(labelText: '保证金'),
+                  ),
+                  const SizedBox(height: 12),
+                  const Text('店铺标签（最多勾选5个）'),
+                  const SizedBox(height: 8),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: [
+                      for (final tag in availableTags)
+                        InputChip(
+                          label: Text(tag),
+                          selected: selectedTags.contains(tag),
+                          onSelected:
+                              selectedTags.contains(tag) ||
+                                  selectedTags.length < 5
+                              ? (selected) => setDialogState(() {
+                                  if (selected) {
+                                    selectedTags.add(tag);
+                                  } else {
+                                    selectedTags.remove(tag);
+                                  }
+                                })
+                              : null,
+                          onDeleted: () => setDialogState(() {
+                            availableTags.remove(tag);
+                            selectedTags.remove(tag);
+                          }),
+                        ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: TextField(
+                          controller: customTagController,
+                          maxLength: 20,
+                          decoration: const InputDecoration(
+                            labelText: '自定义标签',
+                            hintText: '输入后点击添加',
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      IconButton.filled(
+                        tooltip: '添加并勾选',
+                        onPressed: selectedTags.length < 5
+                            ? () {
+                                final tag = customTagController.text.trim();
+                                if (tag.isEmpty || tag.runes.length > 20) {
+                                  return;
+                                }
+                                setDialogState(() {
+                                  availableTags.add(tag);
+                                  selectedTags.add(tag);
+                                  customTagController.clear();
+                                });
+                              }
+                            : null,
+                        icon: const Icon(Icons.add),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: passwordController,
+                    obscureText: true,
+                    maxLength: 128,
+                    decoration: InputDecoration(
+                      labelText: isEditing ? '重置密码（可不填）' : '初始密码',
+                    ),
+                  ),
+                ],
               ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: salonIdController,
-                maxLength: 100,
-                decoration: const InputDecoration(labelText: '店铺ID'),
-              ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: depositController,
-                keyboardType: TextInputType.number,
-                decoration: const InputDecoration(labelText: '保证金'),
-              ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: passwordController,
-                obscureText: true,
-                maxLength: 128,
-                decoration: InputDecoration(
-                  labelText: isEditing ? '重置密码（可不填）' : '初始密码',
-                ),
-              ),
-            ],
+            ),
           ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('取消'),
+            ),
+            FilledButton(
+              onPressed: () async {
+                try {
+                  if (!_isValidDeposit(depositController.text)) {
+                    throw Exception('保证金必须是非负数字');
+                  }
+                  final tags = selectedTags.toList();
+                  if (isEditing) {
+                    await _repository.updateMerchant(
+                      id: merchant['id'].toString(),
+                      username: usernameController.text.trim(),
+                      displayName: usernameController.text.trim(),
+                      salonId: salonIdController.text.trim(),
+                      deposit: depositController.text.trim(),
+                      tags: tags,
+                      password: passwordController.text,
+                    );
+                  } else {
+                    await _repository.createMerchant(
+                      username: usernameController.text.trim(),
+                      displayName: usernameController.text.trim(),
+                      salonId: salonIdController.text.trim(),
+                      deposit: depositController.text.trim(),
+                      tags: tags,
+                      password: passwordController.text,
+                    );
+                  }
+                  if (context.mounted) Navigator.pop(context, true);
+                } catch (error) {
+                  if (!context.mounted) return;
+                  ScaffoldMessenger.of(
+                    context,
+                  ).showSnackBar(SnackBar(content: Text(_saveError(error))));
+                }
+              },
+              child: const Text('保存'),
+            ),
+          ],
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('取消'),
-          ),
-          FilledButton(
-            onPressed: () async {
-              try {
-                if (!_isValidDeposit(depositController.text)) {
-                  throw Exception('保证金必须是非负数字');
-                }
-                if (isEditing) {
-                  await _repository.updateMerchant(
-                    id: merchant['id'].toString(),
-                    username: usernameController.text.trim(),
-                    displayName: usernameController.text.trim(),
-                    salonId: salonIdController.text.trim(),
-                    deposit: depositController.text.trim(),
-                    password: passwordController.text,
-                  );
-                } else {
-                  await _repository.createMerchant(
-                    username: usernameController.text.trim(),
-                    displayName: usernameController.text.trim(),
-                    salonId: salonIdController.text.trim(),
-                    deposit: depositController.text.trim(),
-                    password: passwordController.text,
-                  );
-                }
-                if (context.mounted) Navigator.pop(context, true);
-              } catch (error) {
-                if (!context.mounted) return;
-                ScaffoldMessenger.of(
-                  context,
-                ).showSnackBar(SnackBar(content: Text(_saveError(error))));
-              }
-            },
-            child: const Text('保存'),
-          ),
-        ],
       ),
     );
 
     usernameController.dispose();
     salonIdController.dispose();
     depositController.dispose();
+    customTagController.dispose();
     passwordController.dispose();
 
     if (saved == true) await _load();
@@ -947,6 +1105,11 @@ class _MerchantsTab extends StatelessWidget {
       (merchant['salon'] as Map?) ?? const {},
     );
     final salonAddress = salon['address']?.toString().trim() ?? '';
+    final salonPhone = salon['phone']?.toString().trim() ?? '';
+    final salonTags = ((salon['tags'] as List?) ?? const [])
+        .map((tag) => tag.toString())
+        .where((tag) => tag.isNotEmpty)
+        .join('、');
 
     return Container(
       margin: const EdgeInsets.only(bottom: 10),
@@ -989,7 +1152,17 @@ class _MerchantsTab extends StatelessWidget {
                     ),
                     const SizedBox(height: 4),
                     Text(
+                      '标签：${salonTags.isEmpty ? '-' : salonTags}',
+                      style: TextStyle(color: Colors.grey[700]),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
                       '地址：${salonAddress.isEmpty ? '-' : salonAddress}',
+                      style: TextStyle(color: Colors.grey[700]),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      '联系方式：${salonPhone.isEmpty ? '-' : salonPhone}',
                       style: TextStyle(color: Colors.grey[700]),
                     ),
                     const SizedBox(height: 4),
@@ -1338,6 +1511,385 @@ class _AdTabState extends State<_AdTab> {
             ),
           ),
         ),
+      ),
+    );
+  }
+}
+
+class _CouponCampaignTab extends StatefulWidget {
+  const _CouponCampaignTab({required this.data, required this.onSave});
+
+  final Map<String, dynamic> data;
+  final Future<void> Function(Map<String, dynamic>) onSave;
+
+  @override
+  State<_CouponCampaignTab> createState() => _CouponCampaignTabState();
+}
+
+class _CouponCampaignTabState extends State<_CouponCampaignTab> {
+  late final List<TextEditingController> _minimumControllers;
+  late final List<TextEditingController> _discountControllers;
+  late final List<TextEditingController> _titleControllers;
+  late final List<TextEditingController> _descriptionControllers;
+  PickedImage? _promotionImage;
+  String _promotionImageUrl = '';
+  bool _enabled = false;
+  bool _saving = false;
+  DateTime? _registrationStartAt;
+  DateTime? _registrationEndAt;
+
+  Map<String, dynamic> get _campaign =>
+      Map<String, dynamic>.from(widget.data['campaign'] as Map? ?? {});
+
+  @override
+  void initState() {
+    super.initState();
+    _minimumControllers = List.generate(2, (_) => TextEditingController());
+    _discountControllers = List.generate(2, (_) => TextEditingController());
+    _titleControllers = List.generate(2, (_) => TextEditingController());
+    _descriptionControllers = List.generate(2, (_) => TextEditingController());
+    _applyData();
+  }
+
+  @override
+  void didUpdateWidget(covariant _CouponCampaignTab oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.data != widget.data) _applyData();
+  }
+
+  void _applyData() {
+    final campaign = _campaign;
+    _enabled = campaign['enabled'] == true;
+    _promotionImage = null;
+    _promotionImageUrl = campaign['promotionImageUrl']?.toString() ?? '';
+    final registrationStartAt = _date(campaign['registrationStartAt']);
+    final registrationEndAt = _date(campaign['registrationEndAt']);
+    _registrationStartAt = registrationStartAt == null
+        ? null
+        : campaignDayStart(registrationStartAt);
+    _registrationEndAt = registrationEndAt == null
+        ? null
+        : campaignDayStart(
+            registrationEndAt.subtract(const Duration(microseconds: 1)),
+          );
+    final coupons = (campaign['coupons'] as List? ?? const []);
+    for (var i = 0; i < 2; i++) {
+      final coupon = i < coupons.length
+          ? Map<String, dynamic>.from(coupons[i] as Map)
+          : <String, dynamic>{};
+      _minimumControllers[i].text = _yuan(coupon['minimumSpendFen']);
+      _discountControllers[i].text = _yuan(coupon['discountFen']);
+      _titleControllers[i].text = coupon['title']?.toString() ?? '';
+      _descriptionControllers[i].text = coupon['description']?.toString() ?? '';
+    }
+  }
+
+  DateTime? _date(dynamic value) =>
+      value == null ? null : DateTime.tryParse(value.toString())?.toLocal();
+
+  String _yuan(dynamic fen) {
+    final value = (fen as num?)?.toInt() ?? 0;
+    return value % 100 == 0
+        ? '${value ~/ 100}'
+        : (value / 100).toStringAsFixed(2);
+  }
+
+  @override
+  void dispose() {
+    for (final controller in [
+      ..._minimumControllers,
+      ..._discountControllers,
+      ..._titleControllers,
+      ..._descriptionControllers,
+    ]) {
+      controller.dispose();
+    }
+    super.dispose();
+  }
+
+  Future<DateTime?> _pickDate(DateTime? initial) {
+    final now = DateTime.now();
+    return showDatePicker(
+      context: context,
+      initialDate: initial ?? now,
+      firstDate: DateTime(now.year - 1),
+      lastDate: DateTime(now.year + 5, 12, 31),
+    );
+  }
+
+  Future<void> _pickPromotionImage() async {
+    try {
+      final image = await pickImageForUpload();
+      if (image != null && mounted) {
+        setState(() => _promotionImage = image);
+      }
+    } catch (error) {
+      if (mounted) _message('$error');
+    }
+  }
+
+  Future<void> _save() async {
+    if ([_registrationStartAt, _registrationEndAt].contains(null)) {
+      _message('请完整设置活动日期');
+      return;
+    }
+    if (_enabled && _promotionImage == null && _promotionImageUrl.isEmpty) {
+      _message('请先上传首页推广图');
+      return;
+    }
+    final coupons = <Map<String, dynamic>>[];
+    for (var i = 0; i < 2; i++) {
+      final minimum = double.tryParse(_minimumControllers[i].text.trim());
+      final discount = double.tryParse(_discountControllers[i].text.trim());
+      if (minimum == null || discount == null) {
+        _message('请输入有效的优惠券金额');
+        return;
+      }
+      coupons.add({
+        'key': i == 0 ? '99-20' : '199-30',
+        'minimumSpendFen': (minimum * 100).round(),
+        'discountFen': (discount * 100).round(),
+        'title': _titleControllers[i].text.trim(),
+        'description': _descriptionControllers[i].text.trim(),
+      });
+    }
+
+    setState(() => _saving = true);
+    try {
+      await widget.onSave({
+        'enabled': _enabled,
+        'registrationStartAt': campaignDayStart(
+          _registrationStartAt!,
+        ).toUtc().toIso8601String(),
+        'registrationEndAt': campaignDayEnd(
+          _registrationEndAt!,
+        ).toUtc().toIso8601String(),
+        'promotionImageUrl': _promotionImageUrl,
+        'promotionImageFileName': _promotionImage?.fileName,
+        'promotionImageData': _promotionImage?.base64Data,
+        'coupons': coupons,
+      });
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  void _message(String text) {
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(text)));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final stats = Map<String, dynamic>.from(widget.data['stats'] as Map? ?? {});
+    final typeStats = (stats['coupons'] as List? ?? const [])
+        .map((item) => Map<String, dynamic>.from(item as Map))
+        .toList();
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(20),
+      child: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 900),
+          child: Column(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(20),
+                decoration: _panelDecoration(),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      '新用户赠券',
+                      style: Theme.of(context).textTheme.titleLarge,
+                    ),
+                    const SizedBox(height: 8),
+                    const Text('活动期间的新用户获得两张待领取优惠券，优惠券有效期与活动日期一致。'),
+                    const SizedBox(height: 16),
+                    SwitchListTile(
+                      contentPadding: EdgeInsets.zero,
+                      title: const Text('开启活动'),
+                      value: _enabled,
+                      onChanged: _saving
+                          ? null
+                          : (value) => setState(() => _enabled = value),
+                    ),
+                    const Divider(),
+                    Text(
+                      '首页推广图',
+                      style: Theme.of(context).textTheme.titleMedium,
+                    ),
+                    const SizedBox(height: 8),
+                    const Text('活动开启后显示在客户端首页右下角，建议上传正方形图片。'),
+                    const SizedBox(height: 12),
+                    if (_promotionImageUrl.isNotEmpty)
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(10),
+                        child: Image.network(
+                          _promotionImageUrl,
+                          width: 140,
+                          height: 140,
+                          fit: BoxFit.cover,
+                          errorBuilder: (_, _, _) => const SizedBox.square(
+                            dimension: 140,
+                            child: Center(
+                              child: Icon(
+                                Icons.broken_image_outlined,
+                                size: 48,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    if (_promotionImageUrl.isNotEmpty)
+                      const SizedBox(height: 12),
+                    OutlinedButton.icon(
+                      onPressed: _saving ? null : _pickPromotionImage,
+                      icon: const Icon(Icons.upload_outlined),
+                      label: Text(
+                        _promotionImage == null ? '选择推广图片' : '重新选择图片',
+                      ),
+                    ),
+                    if (_promotionImage != null)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 8),
+                        child: Text(
+                          '${_promotionImage!.fileName} · '
+                          '${_promotionImage!.width}×${_promotionImage!.height}',
+                        ),
+                      ),
+                    const SizedBox(height: 12),
+                    const Divider(),
+                    _dateButton(
+                      '活动开始',
+                      _registrationStartAt,
+                      (value) => _registrationStartAt = value,
+                    ),
+                    _dateButton(
+                      '活动结束',
+                      _registrationEndAt,
+                      (value) => _registrationEndAt = value,
+                    ),
+                    const SizedBox(height: 12),
+                    for (var i = 0; i < 2; i++) _couponEditor(i),
+                    SizedBox(
+                      width: double.infinity,
+                      child: FilledButton.icon(
+                        onPressed: _saving ? null : _save,
+                        icon: _saving
+                            ? const SizedBox.square(
+                                dimension: 18,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                ),
+                              )
+                            : const Icon(Icons.save_outlined),
+                        label: Text(_saving ? '保存中...' : '保存活动配置'),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 16),
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(20),
+                decoration: _panelDecoration(),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('领取统计', style: Theme.of(context).textTheme.titleLarge),
+                    const SizedBox(height: 12),
+                    Text(
+                      '符合用户 ${stats['eligibleUserCount'] ?? 0} 人 · '
+                      '发放 ${stats['grantedCouponCount'] ?? 0} 张 · '
+                      '已领取 ${stats['claimedCouponCount'] ?? 0} 张',
+                    ),
+                    const SizedBox(height: 8),
+                    for (final item in typeStats)
+                      Text(
+                        '${item['type']}：发放 ${item['grantedCount'] ?? 0} 张，'
+                        '领取 ${item['claimedCount'] ?? 0} 张',
+                      ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _dateButton(
+    String label,
+    DateTime? value,
+    void Function(DateTime) assign,
+  ) {
+    return ListTile(
+      contentPadding: EdgeInsets.zero,
+      title: Text(label),
+      subtitle: Text(
+        value == null ? '未设置' : DateFormat('yyyy-MM-dd').format(value),
+      ),
+      trailing: const Icon(Icons.edit_calendar_outlined),
+      onTap: _saving
+          ? null
+          : () async {
+              final picked = await _pickDate(value);
+              if (picked != null && mounted) setState(() => assign(picked));
+            },
+    );
+  }
+
+  Widget _couponEditor(int index) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 16),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: AppTheme.bgCream,
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            index == 0 ? '优惠券一' : '优惠券二',
+            style: const TextStyle(fontWeight: FontWeight.bold),
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              Expanded(
+                child: TextField(
+                  controller: _minimumControllers[index],
+                  keyboardType: const TextInputType.numberWithOptions(
+                    decimal: true,
+                  ),
+                  decoration: const InputDecoration(labelText: '满多少元'),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: TextField(
+                  controller: _discountControllers[index],
+                  keyboardType: const TextInputType.numberWithOptions(
+                    decimal: true,
+                  ),
+                  decoration: const InputDecoration(labelText: '减多少元'),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            controller: _titleControllers[index],
+            decoration: const InputDecoration(labelText: '标题'),
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            controller: _descriptionControllers[index],
+            decoration: const InputDecoration(labelText: '说明文本'),
+          ),
+        ],
       ),
     );
   }
@@ -1725,22 +2277,170 @@ class _ImageThumbnails extends StatelessWidget {
 }
 
 class _UsersTab extends StatelessWidget {
-  const _UsersTab({required this.users});
+  const _UsersTab({required this.users, required this.onReviewAvatar});
 
   final List<Map<String, dynamic>> users;
+  final void Function(Map<String, dynamic> user, bool approve) onReviewAvatar;
 
   @override
   Widget build(BuildContext context) {
+    final pending = users
+        .where((user) => user['avatarReviewStatus'] == 'pending')
+        .toList();
+    final approved = users
+        .where((user) => user['avatarReviewStatus'] == 'approved')
+        .toList();
+    final rejected = users
+        .where((user) => user['avatarReviewStatus'] == 'rejected')
+        .toList();
+    return DefaultTabController(
+      length: 4,
+      child: Column(
+        children: [
+          Material(
+            color: AppTheme.white,
+            child: TabBar(
+              isScrollable: true,
+              labelColor: AppTheme.primaryPink,
+              unselectedLabelColor: AppTheme.textDark,
+              indicatorColor: AppTheme.primaryPink,
+              tabs: [
+                Tab(text: '待审核 (${pending.length})'),
+                Tab(text: '全部 (${users.length})'),
+                Tab(text: '已通过 (${approved.length})'),
+                Tab(text: '已驳回 (${rejected.length})'),
+              ],
+            ),
+          ),
+          Expanded(
+            child: TabBarView(
+              children: [
+                _userTable(pending, '暂无待审核头像'),
+                _userTable(users, '暂无用户'),
+                _userTable(approved, '暂无已通过头像'),
+                _userTable(rejected, '暂无已驳回头像'),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _userTable(List<Map<String, dynamic>> items, String emptyText) {
+    if (items.isEmpty) return Center(child: Text(emptyText));
     return ListView(
       padding: const EdgeInsets.all(20),
       children: [
-        for (final user in users)
-          _DataTile(
-            icon: Icons.person_outline,
-            title: user['displayName']?.toString() ?? '',
-            subtitle: '账号：${user['account']}  ID：${user['id']}',
+        Container(
+          decoration: _panelDecoration(),
+          child: SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: DataTable(
+              dataRowMinHeight: 76,
+              dataRowMaxHeight: 110,
+              columns: const [
+                DataColumn(label: Text('当前头像')),
+                DataColumn(label: Text('用户')),
+                DataColumn(label: Text('待审头像')),
+                DataColumn(label: Text('审核状态')),
+                DataColumn(label: Text('提交时间')),
+                DataColumn(label: Text('驳回原因')),
+                DataColumn(label: Text('操作')),
+              ],
+              rows: [for (final user in items) _userRow(user)],
+            ),
           ),
+        ),
       ],
+    );
+  }
+
+  DataRow _userRow(Map<String, dynamic> user) {
+    final pending = user['avatarReviewStatus'] == 'pending';
+    return DataRow(
+      cells: [
+        DataCell(_avatar(user['avatarUrl']?.toString() ?? '')),
+        DataCell(
+          SizedBox(
+            width: 210,
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  user['displayName']?.toString() ?? '-',
+                  style: const TextStyle(fontWeight: FontWeight.bold),
+                ),
+                Text('账号：${user['account'] ?? '-'}'),
+                Text('ID：${user['id'] ?? '-'}'),
+              ],
+            ),
+          ),
+        ),
+        DataCell(
+          _ImageThumbnails(
+            item: {
+              'imageUrls': [user['pendingAvatarUrl']?.toString() ?? ''],
+            },
+          ),
+        ),
+        DataCell(_AvatarReviewStatus(status: user['avatarReviewStatus'])),
+        DataCell(Text(_itemTime(user['avatarSubmittedAt']))),
+        DataCell(
+          SizedBox(
+            width: 180,
+            child: Text(user['avatarRejectReason']?.toString() ?? '-'),
+          ),
+        ),
+        DataCell(
+          pending
+              ? Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    FilledButton(
+                      onPressed: () => onReviewAvatar(user, true),
+                      child: const Text('通过'),
+                    ),
+                    const SizedBox(width: 8),
+                    OutlinedButton(
+                      onPressed: () => onReviewAvatar(user, false),
+                      child: const Text('驳回'),
+                    ),
+                  ],
+                )
+              : const Text('-'),
+        ),
+      ],
+    );
+  }
+
+  Widget _avatar(String url) => url.isEmpty
+      ? const CircleAvatar(child: Icon(Icons.person_outline))
+      : CircleAvatar(
+          backgroundImage: NetworkImage(url),
+          onBackgroundImageError: (_, _) {},
+        );
+}
+
+class _AvatarReviewStatus extends StatelessWidget {
+  const _AvatarReviewStatus({required this.status});
+
+  final dynamic status;
+
+  @override
+  Widget build(BuildContext context) {
+    final color = switch (status) {
+      'pending' => Colors.orange,
+      'approved' => Colors.green,
+      'rejected' => Colors.red,
+      _ => Colors.grey,
+    };
+    return Chip(
+      label: Text(avatarReviewStatusLabel(status)),
+      labelStyle: TextStyle(color: color),
+      backgroundColor: color.withValues(alpha: 0.1),
+      side: BorderSide(color: color.withValues(alpha: 0.3)),
     );
   }
 }
@@ -1870,7 +2570,7 @@ class _BookingsTabState extends State<_BookingsTab> {
                   DataRow(
                     cells: [
                       DataCell(_orderText(order, '${index + 1}')),
-                      DataCell(_orderText(order, order.orderNo)),
+                      DataCell(_orderNumber(order)),
                       DataCell(_orderText(order, _userContact(order))),
                       DataCell(
                         _orderText(
@@ -2014,6 +2714,27 @@ class _BookingsTabState extends State<_BookingsTab> {
     return Text(text, style: TextStyle(color: color));
   }
 
+  Widget _orderNumber(BookingOrder order) {
+    if (!isAbnormalAccountingOrder(order)) {
+      return _orderText(order, order.orderNo);
+    }
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Tooltip(
+          message: '异常订单：已超过预约时间但仍未完成',
+          child: Icon(
+            Icons.error_outline,
+            size: 18,
+            color: Colors.red.shade700,
+          ),
+        ),
+        const SizedBox(width: 6),
+        _orderText(order, order.orderNo),
+      ],
+    );
+  }
+
   String _userContact(BookingOrder order) {
     final userId = order.userId.replaceFirst(RegExp(r'^user-'), '');
     for (final user in widget.users) {
@@ -2026,6 +2747,10 @@ class _BookingsTabState extends State<_BookingsTab> {
   }
 
   String _orderStatus(BookingOrder order) {
+    final overdueHours = pendingOrderOverdueHours(order);
+    if (overdueHours != null) {
+      return '${order.statusLabel}（逾期$overdueHours小时未处理）';
+    }
     if (order.status != 'canceled') return order.statusLabel;
     final canceledBy = order.canceledBy.isNotEmpty
         ? order.canceledBy
@@ -2036,34 +2761,6 @@ class _BookingsTabState extends State<_BookingsTab> {
   }
 
   String _money(double value) => _moneyFormatter.format(value);
-}
-
-class _DataTile extends StatelessWidget {
-  const _DataTile({
-    required this.icon,
-    required this.title,
-    required this.subtitle,
-  });
-
-  final IconData icon;
-  final String title;
-  final String subtitle;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 10),
-      decoration: _panelDecoration(),
-      child: ListTile(
-        leading: CircleAvatar(
-          backgroundColor: AppTheme.primaryPink.withValues(alpha: 0.16),
-          child: Icon(icon, color: AppTheme.primaryPink),
-        ),
-        title: Text(title, style: const TextStyle(fontWeight: FontWeight.bold)),
-        subtitle: Text(subtitle),
-      ),
-    );
-  }
 }
 
 BoxDecoration _panelDecoration() {

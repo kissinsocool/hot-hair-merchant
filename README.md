@@ -4,16 +4,15 @@ Merchant app for managing Hot Pepper booking orders.
 
 ## Getting Started
 
-Run the local backend on port 3000, then start the Flutter app:
+The app uses `https://api.hothaircc.cn/api` and realtime updates from
+`wss://api.hothaircc.cn/ws` by default:
 
 ```sh
 flutter pub get
 flutter run -d chrome
 ```
 
-The app reads the API from `http://localhost:3000/api` and realtime updates
-from `ws://localhost:3000/ws` by default. To use another real backend, pass
-`--dart-define`:
+To use a local or different backend, pass `--dart-define`:
 
 ```sh
 flutter run -d chrome \

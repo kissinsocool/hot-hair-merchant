@@ -30,7 +30,7 @@ class BookingUpdateStream {
     if (_isConnecting || _channel != null) return;
     const socketUrl = String.fromEnvironment(
       'WS_BASE_URL',
-      defaultValue: 'ws://182.92.129.180:3000/ws',
+      defaultValue: 'wss://api.hothaircc.cn/ws',
     );
 
     _isConnecting = true;

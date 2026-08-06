@@ -82,10 +82,15 @@ class _MerchantLoginScreenState extends State<MerchantLoginScreen> {
   }
 
   Future<void> _openDocument(String path) async {
-    final opened = await launchUrl(
-      Uri.base.resolve(path),
-      webOnlyWindowName: '_blank',
-    );
+    var opened = false;
+    try {
+      opened = await launchUrl(
+        Uri.base.resolve(path),
+        webOnlyWindowName: '_blank',
+      );
+    } catch (_) {
+      // launchUrl may throw when the platform plugin or browser is unavailable.
+    }
     if (!opened && mounted) {
       ScaffoldMessenger.of(
         context,

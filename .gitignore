@@ -31,8 +31,10 @@ migrate_working_dir/
 .pub-cache/
 .pub/
 /build/
+node_modules/
 /coverage/
 /output/
+/ossutil_output/
 /AGENTS.md
 /.playwright-cli/
 

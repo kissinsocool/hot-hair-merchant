@@ -1130,7 +1130,7 @@ class _MerchantOrdersScreenState extends State<MerchantOrdersScreen> {
               child: OutlinedButton.icon(
                 onPressed: _isUpdating ? null : () => _rescheduleOrder(order),
                 icon: const Icon(Icons.edit_calendar_outlined, size: 18),
-                label: const Text('预约变更'),
+                label: const Text('更改预约日期'),
               ),
             ),
             const SizedBox(height: 10),
