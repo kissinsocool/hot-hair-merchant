@@ -13,6 +13,31 @@ import '../data/image_upload_picker.dart';
 import '../data/merchant_salon_repository.dart';
 import 'merchant_notifications_screen.dart';
 
+String formatPriceFenForInput(dynamic value) {
+  if (value is! int || value < 0) return '';
+  final yuan = value ~/ 100;
+  final cents = value % 100;
+  return cents == 0
+      ? yuan.toString()
+      : '$yuan.${cents.toString().padLeft(2, '0')}';
+}
+
+int? parsePriceFen(String value) {
+  final match = RegExp(r'^(\d{1,8})(?:\.(\d{0,2}))?$').firstMatch(value);
+  if (match == null) return null;
+  final yuan = int.parse(match.group(1)!);
+  final cents = (match.group(2) ?? '').padRight(2, '0');
+  return yuan * 100 + (cents.isEmpty ? 0 : int.parse(cents));
+}
+
+void setServiceDuration(Map<String, dynamic> service, int minutes) {
+  service['durationMinutes'] = minutes;
+}
+
+void setStaffExtraServiceFee(Map<String, dynamic> staff, int fee) {
+  staff['extraServiceFeeFen'] = fee * 100;
+}
+
 class MerchantSalonScreen extends StatefulWidget {
   const MerchantSalonScreen({
     super.key,
@@ -114,6 +139,16 @@ class _MerchantSalonScreenState extends State<MerchantSalonScreen> {
         _setSalonAddress(_salonAddressText());
         _services = _mapList(salon['services']);
         _staff = _mapList(salon['staff']);
+        for (final service in _services) {
+          setServiceDuration(
+            service,
+            _normalizeServiceDurationMinutes(service['durationMinutes']),
+          );
+        }
+        for (final profile in _staff) {
+          final feeFen = profile['extraServiceFeeFen'];
+          setStaffExtraServiceFee(profile, feeFen is int ? feeFen ~/ 100 : 0);
+        }
         _isLoading = false;
       });
       unawaited(_autoFillAddressFromCurrentLocation());
@@ -294,13 +329,18 @@ class _MerchantSalonScreenState extends State<MerchantSalonScreen> {
       for (final item in [
         ('第${i + 1}个套餐服务效果图', service['imageUrl']),
         ('第${i + 1}个套餐名称', service['name']),
-        ('第${i + 1}个套餐价格', service['price']),
-        ('第${i + 1}个套餐时长', service['duration']),
         ('第${i + 1}个套餐简介', service['note']),
       ]) {
         if (text(item.$2).isEmpty || text(item.$2) == '¥') {
           return '请填写${item.$1}';
         }
+      }
+      if (service['priceFen'] is! int || (service['priceFen'] as int) < 0) {
+        return '请填写第${i + 1}个套餐价格';
+      }
+      if (service['durationMinutes'] is! int ||
+          !_serviceDurationOptions.contains(service['durationMinutes'])) {
+        return '请选择第${i + 1}个套餐时长';
       }
       if (text(service['name']).characters.length > 10) {
         return '第${i + 1}个套餐名称不能超过10字';
@@ -525,8 +565,8 @@ class _MerchantSalonScreenState extends State<MerchantSalonScreen> {
         'id': '',
         'name': '',
         'tags': <String>[],
-        'price': '¥',
-        'duration': '30分钟',
+        'priceFen': null,
+        'durationMinutes': 30,
         'note': '',
         'imageUrl': '',
       });
@@ -544,7 +584,7 @@ class _MerchantSalonScreenState extends State<MerchantSalonScreen> {
         'name': '',
         'role': _staffRoleOptions.first,
         'experience': '1年',
-        'extraServiceFee': 0,
+        'extraServiceFeeFen': 0,
         'imageUrl': '',
         'bio': '',
         'unavailableSlots': <String>[],
@@ -2012,8 +2052,9 @@ class _MerchantSalonScreenState extends State<MerchantSalonScreen> {
   }
 
   Widget _buildExtraServiceFeeDropdown(Map<String, dynamic> profile) {
-    final value = _normalizeFee(profile['extraServiceFee']);
-    profile['extraServiceFee'] = value;
+    final feeFen = profile['extraServiceFeeFen'];
+    final value = feeFen is int ? feeFen ~/ 100 : 0;
+    setStaffExtraServiceFee(profile, value);
 
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
@@ -2022,7 +2063,7 @@ class _MerchantSalonScreenState extends State<MerchantSalonScreen> {
         keyboardType: TextInputType.number,
         inputFormatters: [FilteringTextInputFormatter.digitsOnly],
         onChanged: (fee) {
-          profile['extraServiceFee'] = _normalizeFee(fee);
+          setStaffExtraServiceFee(profile, _normalizeFee(fee));
         },
         decoration: InputDecoration(
           labelText: '额外服务费',
@@ -2075,17 +2116,23 @@ class _MerchantSalonScreenState extends State<MerchantSalonScreen> {
   }
 
   Widget _buildServicePriceField(Map<String, dynamic> service) {
-    final price = _normalizePrice(service['price']);
-    service['price'] = price;
+    final price = formatPriceFenForInput(service['priceFen']);
 
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
       child: TextFormField(
-        initialValue: price.replaceFirst('¥', ''),
-        keyboardType: TextInputType.number,
-        inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+        initialValue: price,
+        keyboardType: const TextInputType.numberWithOptions(decimal: true),
+        inputFormatters: [
+          TextInputFormatter.withFunction(
+            (oldValue, newValue) =>
+                RegExp(r'^\d{0,8}(?:\.\d{0,2})?$').hasMatch(newValue.text)
+                ? newValue
+                : oldValue,
+          ),
+        ],
         onChanged: (value) {
-          service['price'] = _normalizePrice(value);
+          service['priceFen'] = parsePriceFen(value);
         },
         decoration: InputDecoration(
           labelText: '价格',
@@ -2107,8 +2154,8 @@ class _MerchantSalonScreenState extends State<MerchantSalonScreen> {
   }
 
   Widget _buildServiceDurationDropdown(Map<String, dynamic> service) {
-    final value = _normalizeServiceDurationMinutes(service['duration']);
-    service['duration'] = _formatServiceDuration(value);
+    final value = _normalizeServiceDurationMinutes(service['durationMinutes']);
+    setServiceDuration(service, value);
 
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
@@ -2125,7 +2172,7 @@ class _MerchantSalonScreenState extends State<MerchantSalonScreen> {
             .toList(),
         onChanged: (minutes) {
           setState(() {
-            service['duration'] = _formatServiceDuration(minutes ?? 30);
+            setServiceDuration(service, minutes ?? 30);
           });
         },
         decoration: _dropdownDecoration('时长'),
@@ -2133,18 +2180,8 @@ class _MerchantSalonScreenState extends State<MerchantSalonScreen> {
     );
   }
 
-  String _normalizePrice(dynamic value) {
-    final text = value?.toString().trim() ?? '';
-    final digits = text.replaceAll(RegExp(r'[^\d]'), '');
-    return digits.isEmpty ? '¥' : '¥$digits';
-  }
-
   int _normalizeServiceDurationMinutes(dynamic value) {
-    final match = RegExp(r'\d+').firstMatch(value?.toString() ?? '');
-    final raw = int.tryParse(match?.group(0) ?? '') ?? 30;
-    final minutes = raw <= 3 ? raw * 60 : raw;
-    final rounded = ((minutes / 30).round() * 30).clamp(30, 180);
-    return _serviceDurationOptions.contains(rounded) ? rounded : 30;
+    return value is int && _serviceDurationOptions.contains(value) ? value : 30;
   }
 
   String _formatServiceDuration(int minutes) {

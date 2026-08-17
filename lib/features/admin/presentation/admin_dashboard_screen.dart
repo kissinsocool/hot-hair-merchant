@@ -926,13 +926,31 @@ class _OverviewTab extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final funnel = Map<String, dynamic>.from(overview['funnel'] as Map? ?? {});
+    final counts = Map<String, dynamic>.from(funnel['counts'] as Map? ?? {});
     final items = [
-      ('商家账号', overview['merchantCount']),
-      ('客户端用户', overview['clientCount']),
-      ('店铺数量', overview['salonCount']),
-      ('全部订单', overview['bookingCount']),
-      ('待处理订单', overview['pendingCount']),
-      ('预约成功订单', overview['acceptedCount']),
+      (
+        '昨日门店点击',
+        counts['salon_detail_click'],
+        '转化率 ${funnel['salonDetailClickRate'] ?? 0}%',
+      ),
+      (
+        '昨日首页曝光',
+        counts['home_exposure'],
+        '昨日新增用户 ${overview['yesterdayNewClientCount'] ?? 0}',
+      ),
+      (
+        '昨日提交预约',
+        counts['booking_submitted'],
+        '转化率 ${funnel['bookingSubmissionRate'] ?? 0}%',
+      ),
+      ('昨日开始预约', counts['booking_started'], ''),
+      ('商家账号', overview['merchantCount'], ''),
+      ('客户端用户', overview['clientCount'], ''),
+      ('店铺数量', overview['salonCount'], ''),
+      ('全部订单', overview['bookingCount'], ''),
+      ('待处理订单', overview['pendingCount'], ''),
+      ('预约成功订单', overview['acceptedCount'], ''),
     ];
 
     return GridView.count(
@@ -960,6 +978,10 @@ class _OverviewTab extends StatelessWidget {
                     fontWeight: FontWeight.bold,
                   ),
                 ),
+                if (item.$3.isNotEmpty) ...[
+                  const SizedBox(height: 4),
+                  Text(item.$3, style: TextStyle(color: Colors.grey[600])),
+                ],
               ],
             ),
           ),

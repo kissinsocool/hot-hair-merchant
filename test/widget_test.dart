@@ -6,9 +6,29 @@ import 'package:hot_pepper_merchant/features/auth/presentation/merchant_login_sc
 import 'package:hot_pepper_merchant/features/admin/presentation/admin_dashboard_screen.dart';
 import 'package:hot_pepper_merchant/features/booking/domain/booking_order.dart';
 import 'package:hot_pepper_merchant/features/merchant/presentation/merchant_orders_screen.dart';
+import 'package:hot_pepper_merchant/features/merchant/presentation/merchant_salon_screen.dart';
 import 'package:hot_pepper_merchant/main.dart';
 
 void main() {
+  test('merchant service prices use priceFen as the only value', () {
+    expect(parsePriceFen('800'), 80000);
+    expect(parsePriceFen('199.50'), 19950);
+    expect(parsePriceFen(''), isNull);
+    expect(formatPriceFenForInput(80000), '800');
+    expect(formatPriceFenForInput(19950), '199.50');
+  });
+
+  test('merchant salon numeric fields use canonical API values', () {
+    final service = <String, dynamic>{'durationMinutes': 90};
+    final staff = <String, dynamic>{'extraServiceFeeFen': 20000};
+
+    setServiceDuration(service, 120);
+    setStaffExtraServiceFee(staff, 201);
+
+    expect(service, {'durationMinutes': 120});
+    expect(staff, {'extraServiceFeeFen': 20100});
+  });
+
   testWidgets('keeps the admin entry off the merchant login screen', (
     tester,
   ) async {
