@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:dio/dio.dart';
+import 'package:hot_pepper_merchant/core/network/api_client.dart';
 import 'package:hot_pepper_merchant/features/auth/data/merchant_auth_repository.dart';
 import 'package:hot_pepper_merchant/features/auth/presentation/merchant_login_screen.dart';
 import 'package:hot_pepper_merchant/features/admin/presentation/admin_dashboard_screen.dart';
@@ -10,6 +12,47 @@ import 'package:hot_pepper_merchant/features/merchant/presentation/merchant_salo
 import 'package:hot_pepper_merchant/main.dart';
 
 void main() {
+  test('API errors are converted to user-facing text without status codes', () {
+    final error = DioException(
+      requestOptions: RequestOptions(path: '/admin/merchants/1/publish'),
+      response: Response<dynamic>(
+        requestOptions: RequestOptions(path: '/admin/merchants/1/publish'),
+        statusCode: 409,
+        data: {'message': 'Conflict'},
+      ),
+      type: DioExceptionType.badResponse,
+    );
+
+    final message = userFacingApiError(error);
+
+    expect(message, '当前状态已发生变化，请刷新后重试');
+    expect(message, isNot(contains('409')));
+    expect(message, isNot(contains('DioException')));
+  });
+
+  test(
+    'API errors keep readable backend messages and explain network failures',
+    () {
+      final request = RequestOptions(path: '/admin/merchants/1/publish');
+      final backendMessage = DioException(
+        requestOptions: request,
+        response: Response<dynamic>(
+          requestOptions: request,
+          statusCode: 409,
+          data: {'message': '店铺内容审核通过后才能上架'},
+        ),
+        type: DioExceptionType.badResponse,
+      );
+      final networkError = DioException(
+        requestOptions: request,
+        type: DioExceptionType.connectionError,
+      );
+
+      expect(userFacingApiError(backendMessage), '店铺内容审核通过后才能上架');
+      expect(userFacingApiError(networkError), '网络连接失败，请检查网络后重试');
+    },
+  );
+
   test('merchant service prices use priceFen as the only value', () {
     expect(parsePriceFen('800'), 80000);
     expect(parsePriceFen('199.50'), 19950);

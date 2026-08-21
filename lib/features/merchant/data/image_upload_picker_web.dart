@@ -33,13 +33,12 @@ Future<PickedImage?> pickImageForUpload() async {
     ..accept = 'image/*'
     ..multiple = false;
 
-  input.click();
-  await input.onChange.first;
+  await waitForFileSelection(input);
 
   final file = input.files?.isNotEmpty == true ? input.files!.first : null;
   if (file == null) return null;
 
-  return _pickedImageFromFile(file);
+  return pickedImageFromFileForUpload(file);
 }
 
 Future<List<PickedImage>> pickImagesForUpload({int limit = 5}) async {
@@ -47,21 +46,29 @@ Future<List<PickedImage>> pickImagesForUpload({int limit = 5}) async {
     ..accept = 'image/*'
     ..multiple = true;
 
-  input.click();
-  await input.onChange.first;
+  await waitForFileSelection(input);
 
   final files = input.files;
   if (files == null || files.isEmpty) return [];
 
   final pickedImages = <PickedImage>[];
   for (final file in files.take(limit)) {
-    pickedImages.add(await _pickedImageFromFile(file));
+    pickedImages.add(await pickedImageFromFileForUpload(file));
   }
 
   return pickedImages;
 }
 
-Future<PickedImage> _pickedImageFromFile(html.File file) async {
+Future<void> waitForFileSelection(
+  html.FileUploadInputElement input, {
+  void Function()? openPicker,
+}) async {
+  final changed = input.onChange.first;
+  (openPicker ?? input.click)();
+  await changed;
+}
+
+Future<PickedImage> pickedImageFromFileForUpload(html.File file) async {
   final sourceUrl = html.Url.createObjectUrl(file);
   final sourceImage = html.ImageElement(src: sourceUrl);
   await sourceImage.onLoad.first;

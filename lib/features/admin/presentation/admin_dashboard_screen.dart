@@ -4,6 +4,7 @@ import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
+import '../../../core/network/api_client.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../booking/domain/booking_order.dart';
 import '../../merchant/data/image_upload_picker.dart';
@@ -892,14 +893,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
   }
 
   String _saveError(Object error) {
-    if (error is DioException) {
-      final data = error.response?.data;
-      if (data is Map && data['message'] != null) {
-        return data['message'].toString();
-      }
-    }
-    final message = error.toString().replaceFirst('Exception: ', '');
-    return message.isEmpty ? '保存失败，请检查账号、密码或保证金' : message;
+    return userFacingApiError(error, fallback: '保存失败，请检查填写内容后重试');
   }
 }
 
@@ -1439,12 +1433,7 @@ class _AdTabState extends State<_AdTab> {
       _showMessage('广告位已保存');
     } catch (error) {
       if (!mounted) return;
-      final data = error is DioException ? error.response?.data : null;
-      _showMessage(
-        data is Map && data['message'] != null
-            ? data['message'].toString()
-            : '保存失败：$error',
-      );
+      _showMessage(userFacingApiError(error, fallback: '广告保存失败，请稍后重试'));
     } finally {
       if (mounted) setState(() => _saving = false);
     }

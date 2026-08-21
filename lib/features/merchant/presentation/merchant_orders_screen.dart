@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
+import '../../../core/network/api_client.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/widgets/page_width.dart';
 import '../../booking/data/booking_update_stream.dart';
@@ -137,7 +138,7 @@ class _MerchantOrdersScreenState extends State<MerchantOrdersScreen> {
     } catch (e) {
       if (!mounted) return;
       setState(() {
-        _errorMessage = e.toString();
+        _errorMessage = userFacingApiError(e, fallback: '订单加载失败，请稍后重试');
         _isLoading = false;
       });
     }
@@ -193,7 +194,7 @@ class _MerchantOrdersScreenState extends State<MerchantOrdersScreen> {
       if (!mounted) return;
       ScaffoldMessenger.of(
         context,
-      ).showSnackBar(SnackBar(content: Text('操作失败: $e')));
+      ).showSnackBar(SnackBar(content: Text(userFacingApiError(e))));
     } finally {
       if (mounted) setState(() => _isUpdating = false);
     }
@@ -228,9 +229,11 @@ class _MerchantOrdersScreenState extends State<MerchantOrdersScreen> {
         );
       } catch (e) {
         if (!mounted) return;
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('可用时间加载失败: $e')));
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(userFacingApiError(e, fallback: '可用时间加载失败，请稍后重试')),
+          ),
+        );
         return;
       } finally {
         if (mounted) setState(() => _isUpdating = false);
@@ -514,9 +517,13 @@ class _MerchantOrdersScreenState extends State<MerchantOrdersScreen> {
                           return;
                         } catch (e) {
                           if (!context.mounted) return;
-                          ScaffoldMessenger.of(
-                            context,
-                          ).showSnackBar(SnackBar(content: Text('回复失败: $e')));
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text(
+                                userFacingApiError(e, fallback: '回复失败，请稍后重试'),
+                              ),
+                            ),
+                          );
                         } finally {
                           if (!submitted && context.mounted) {
                             setDialogState(() => isSubmitting = false);

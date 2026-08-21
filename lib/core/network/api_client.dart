@@ -5,6 +5,50 @@ import 'package:dio/dio.dart';
 bool hasMorePages(int loaded, int pageLength, int pageSize, int? total) =>
     pageLength > 0 && (total == null ? pageLength >= pageSize : loaded < total);
 
+String userFacingApiError(Object error, {String fallback = '操作失败，请稍后重试'}) {
+  if (error is DioException) {
+    final data = error.response?.data;
+    final responseMessage = data is Map
+        ? data['message']?.toString().trim()
+        : null;
+    if (_isReadableChineseMessage(responseMessage)) return responseMessage!;
+
+    return switch (error.type) {
+      DioExceptionType.connectionTimeout ||
+      DioExceptionType.sendTimeout ||
+      DioExceptionType.receiveTimeout => '请求超时，请稍后重试',
+      DioExceptionType.connectionError => '网络连接失败，请检查网络后重试',
+      DioExceptionType.badCertificate => '安全连接失败，请稍后重试',
+      DioExceptionType.cancel => '请求已取消',
+      DioExceptionType.badResponse => switch (error.response?.statusCode) {
+        401 => '登录已失效，请重新登录',
+        403 => '当前账号没有权限执行此操作',
+        404 => '请求的内容不存在或已被删除',
+        409 => '当前状态已发生变化，请刷新后重试',
+        429 => '操作过于频繁，请稍后重试',
+        final status when status != null && status >= 500 => '服务暂时不可用，请稍后重试',
+        _ => fallback,
+      },
+      DioExceptionType.unknown => fallback,
+    };
+  }
+
+  final message = error.toString().replaceFirst(
+    RegExp(r'^(?:Exception|FormatException|StateError):\s*'),
+    '',
+  );
+  return _isReadableChineseMessage(message) ? message : fallback;
+}
+
+bool _isReadableChineseMessage(String? message) {
+  if (message == null || message.isEmpty) return false;
+  if (!RegExp(r'[\u4e00-\u9fff]').hasMatch(message)) return false;
+  return !RegExp(
+    r'\b(?:HTTP|status(?:Code)?)\s*:?\s*\d{3}\b',
+    caseSensitive: false,
+  ).hasMatch(message);
+}
+
 class ApiClient {
   ApiClient()
     : _dio = Dio(

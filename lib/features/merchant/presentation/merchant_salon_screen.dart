@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:geolocator/geolocator.dart';
 
+import '../../../core/network/api_client.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/widgets/page_width.dart';
 import '../../booking/data/booking_update_stream.dart';
@@ -155,7 +156,7 @@ class _MerchantSalonScreenState extends State<MerchantSalonScreen> {
     } catch (e) {
       if (!mounted) return;
       setState(() {
-        _errorMessage = e.toString();
+        _errorMessage = userFacingApiError(e, fallback: '店铺资料加载失败，请稍后重试');
         _isLoading = false;
       });
     }
