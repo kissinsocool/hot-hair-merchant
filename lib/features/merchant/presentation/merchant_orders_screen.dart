@@ -1065,6 +1065,8 @@ class _MerchantOrdersScreenState extends State<MerchantOrdersScreen> {
             Icons.person,
             '${order.userName} 预约 ${order.staffName}',
           ),
+          if (order.userPhone.isNotEmpty)
+            _buildInfoRow(Icons.phone_outlined, '联系电话 ${order.userPhone}'),
           _buildInfoRow(Icons.schedule, _dateFormat.format(order.startTime)),
           _buildInfoRow(
             Icons.payments,

@@ -142,6 +142,7 @@ void main() {
       'id': 'BK1',
       'userId': 'U1',
       'userName': '测试用户',
+      'userPhone': '13800138000',
       'salonName': '测试门店',
       'staffId': 'S1',
       'staffName': '测试发型师',
@@ -161,6 +162,7 @@ void main() {
       order.startTime,
       DateTime.parse('2026-06-21T03:30:00.000Z').toLocal(),
     );
+    expect(order.userPhone, '13800138000');
   });
 
   test('filters out pending and accepted staff in the same time slot', () {
