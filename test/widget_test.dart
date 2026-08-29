@@ -7,9 +7,38 @@ import 'package:hot_pepper_merchant/features/auth/data/merchant_auth_repository.
 import 'package:hot_pepper_merchant/features/auth/presentation/merchant_login_screen.dart';
 import 'package:hot_pepper_merchant/features/admin/presentation/admin_dashboard_screen.dart';
 import 'package:hot_pepper_merchant/features/booking/domain/booking_order.dart';
+import 'package:hot_pepper_merchant/features/merchant/data/merchant_salon_repository.dart';
 import 'package:hot_pepper_merchant/features/merchant/presentation/merchant_orders_screen.dart';
 import 'package:hot_pepper_merchant/features/merchant/presentation/merchant_salon_screen.dart';
 import 'package:hot_pepper_merchant/main.dart';
+
+class _SalonRepositoryWithExistingItems extends MerchantSalonRepository {
+  @override
+  Future<Map<String, dynamic>> fetchSalon() async => {
+    'address': '已有地址',
+    'services': [
+      {
+        'name': '已有套餐',
+        'tags': ['洗剪吹'],
+        'priceFen': 10000,
+        'durationMinutes': 60,
+        'note': '已有简介',
+        'imageUrl': '',
+      },
+    ],
+    'staff': [
+      {
+        'name': '已有理发师',
+        'role': '高级理发师',
+        'experience': '5年',
+        'extraServiceFeeFen': 1000,
+        'imageUrl': '',
+        'bio': '已有简介',
+        'unavailableSlots': <String>[],
+      },
+    ],
+  };
+}
 
 void main() {
   test('API errors are converted to user-facing text without status codes', () {
@@ -70,6 +99,60 @@ void main() {
 
     expect(service, {'durationMinutes': 120});
     expect(staff, {'extraServiceFeeFen': 20100});
+  });
+
+  testWidgets('新增套餐和理发师时表单不预选内容', (tester) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: MerchantSalonScreen(
+          repository: _SalonRepositoryWithExistingItems(),
+          enableRealtime: false,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('服务套餐'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('添加套餐'));
+    await tester.pump();
+
+    final durations = tester
+        .widgetList<DropdownButtonFormField<int>>(
+          find.byWidgetPredicate(
+            (widget) =>
+                widget is DropdownButtonFormField<int> &&
+                widget.decoration.labelText == '时长',
+          ),
+        )
+        .map((field) => field.initialValue);
+    expect(durations, containsAll(<int?>[null, 60]));
+
+    await tester.tap(find.text('理发师').first);
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('添加理发师'));
+    await tester.pump();
+
+    final roles = tester
+        .widgetList<DropdownButtonFormField<String>>(
+          find.byWidgetPredicate(
+            (widget) =>
+                widget is DropdownButtonFormField<String> &&
+                widget.decoration.labelText == '职位',
+          ),
+        )
+        .map((field) => field.initialValue);
+    final experienceYears = tester
+        .widgetList<DropdownButtonFormField<int>>(
+          find.byWidgetPredicate(
+            (widget) =>
+                widget is DropdownButtonFormField<int> &&
+                widget.decoration.labelText == '经验',
+          ),
+        )
+        .map((field) => field.initialValue);
+    expect(roles, containsAll(<String?>[null, '高级理发师']));
+    expect(experienceYears, containsAll(<int?>[null, 5]));
   });
 
   testWidgets('keeps the admin entry off the merchant login screen', (

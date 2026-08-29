@@ -567,7 +567,7 @@ class _MerchantSalonScreenState extends State<MerchantSalonScreen> {
         'name': '',
         'tags': <String>[],
         'priceFen': null,
-        'durationMinutes': 30,
+        'durationMinutes': null,
         'note': '',
         'imageUrl': '',
       });
@@ -583,8 +583,8 @@ class _MerchantSalonScreenState extends State<MerchantSalonScreen> {
       _staff.insert(0, {
         'id': '',
         'name': '',
-        'role': _staffRoleOptions.first,
-        'experience': '1年',
+        'role': '',
+        'experience': '',
         'extraServiceFeeFen': 0,
         'imageUrl': '',
         'bio': '',
@@ -1463,20 +1463,24 @@ class _MerchantSalonScreenState extends State<MerchantSalonScreen> {
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
       decoration: BoxDecoration(
-        color: AppTheme.bgCream,
         borderRadius: BorderRadius.circular(8),
         border: Border.all(color: AppTheme.accentBeige),
       ),
-      child: SwitchListTile(
-        title: const Text('可预约当天'),
-        subtitle: const Text(
-          '关闭后，客户无法预约当天时段',
-          style: TextStyle(color: Colors.red, fontSize: 12),
+      child: Material(
+        color: Colors.transparent,
+        child: SwitchListTile(
+          tileColor: AppTheme.bgCream,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+          title: const Text('可预约当天'),
+          subtitle: const Text(
+            '关闭后，客户无法预约当天时段',
+            style: TextStyle(color: Colors.red, fontSize: 12),
+          ),
+          value: _salon['acceptsSameDayBooking'] != false,
+          activeThumbColor: AppTheme.primaryPink,
+          onChanged: (value) =>
+              setState(() => _salon['acceptsSameDayBooking'] = value),
         ),
-        value: _salon['acceptsSameDayBooking'] != false,
-        activeThumbColor: AppTheme.primaryPink,
-        onChanged: (value) =>
-            setState(() => _salon['acceptsSameDayBooking'] = value),
       ),
     );
   }
@@ -1498,6 +1502,7 @@ class _MerchantSalonScreenState extends State<MerchantSalonScreen> {
             final index = entry.key;
             final service = entry.value;
             return _buildNestedCard(
+              key: ObjectKey(service),
               title: service['name']?.toString().isNotEmpty == true
                   ? service['name'].toString()
                   : '新套餐',
@@ -1612,6 +1617,7 @@ class _MerchantSalonScreenState extends State<MerchantSalonScreen> {
             final index = entry.key;
             final profile = entry.value;
             return _buildNestedCard(
+              key: ObjectKey(profile),
               title: profile['name']?.toString().isNotEmpty == true
                   ? profile['name'].toString()
                   : '新理发师',
@@ -2155,8 +2161,10 @@ class _MerchantSalonScreenState extends State<MerchantSalonScreen> {
   }
 
   Widget _buildServiceDurationDropdown(Map<String, dynamic> service) {
-    final value = _normalizeServiceDurationMinutes(service['durationMinutes']);
-    setServiceDuration(service, value);
+    final duration = service['durationMinutes'];
+    final value = duration is int && _serviceDurationOptions.contains(duration)
+        ? duration
+        : null;
 
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
@@ -2172,9 +2180,9 @@ class _MerchantSalonScreenState extends State<MerchantSalonScreen> {
             )
             .toList(),
         onChanged: (minutes) {
-          setState(() {
-            setServiceDuration(service, minutes ?? 30);
-          });
+          if (minutes != null) {
+            setState(() => setServiceDuration(service, minutes));
+          }
         },
         decoration: _dropdownDecoration('时长'),
       ),
@@ -2191,10 +2199,7 @@ class _MerchantSalonScreenState extends State<MerchantSalonScreen> {
 
   Widget _buildStaffRoleDropdown(Map<String, dynamic> profile) {
     final currentRole = profile['role']?.toString() ?? '';
-    final value = _staffRoleOptions.contains(currentRole)
-        ? currentRole
-        : _staffRoleOptions.first;
-    profile['role'] = value;
+    final value = _staffRoleOptions.contains(currentRole) ? currentRole : null;
 
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
@@ -2205,7 +2210,7 @@ class _MerchantSalonScreenState extends State<MerchantSalonScreen> {
             .map((role) => DropdownMenuItem(value: role, child: Text(role)))
             .toList(),
         onChanged: (role) {
-          setState(() => profile['role'] = role ?? _staffRoleOptions.first);
+          if (role != null) setState(() => profile['role'] = role);
         },
         decoration: _dropdownDecoration('职位'),
       ),
@@ -2214,7 +2219,6 @@ class _MerchantSalonScreenState extends State<MerchantSalonScreen> {
 
   Widget _buildExperienceDropdown(Map<String, dynamic> profile) {
     final value = _normalizeExperienceYear(profile['experience']);
-    profile['experience'] = '$value年';
 
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
@@ -2225,17 +2229,17 @@ class _MerchantSalonScreenState extends State<MerchantSalonScreen> {
             .map((year) => DropdownMenuItem(value: year, child: Text('$year年')))
             .toList(),
         onChanged: (year) {
-          setState(() => profile['experience'] = '${year ?? 1}年');
+          if (year != null) setState(() => profile['experience'] = '$year年');
         },
         decoration: _dropdownDecoration('经验'),
       ),
     );
   }
 
-  int _normalizeExperienceYear(dynamic value) {
+  int? _normalizeExperienceYear(dynamic value) {
     final match = RegExp(r'\d+').firstMatch(value?.toString() ?? '');
-    final year = int.tryParse(match?.group(0) ?? '') ?? 1;
-    return year.clamp(1, 30);
+    final year = int.tryParse(match?.group(0) ?? '');
+    return year?.clamp(1, 30);
   }
 
   InputDecoration _dropdownDecoration(String label) {
@@ -2545,12 +2549,14 @@ class _MerchantSalonScreenState extends State<MerchantSalonScreen> {
   }
 
   Widget _buildNestedCard({
+    Key? key,
     required String title,
     required VoidCallback onDelete,
     required List<Widget> children,
     List<Widget> headerActions = const [],
   }) {
     return Container(
+      key: key,
       margin: const EdgeInsets.only(bottom: 12),
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
