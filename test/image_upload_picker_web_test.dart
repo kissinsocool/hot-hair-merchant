@@ -22,6 +22,21 @@ void main() {
     },
   );
 
+  test('invalid image reports an error instead of hanging', () async {
+    final file = html.File(
+      [
+        <int>[0, 1, 2, 3],
+      ],
+      'broken.jpg',
+      {'type': 'image/jpeg'},
+    );
+
+    await expectLater(
+      pickedImageFromFileForUpload(file),
+      throwsA(isA<ImageUploadDecodeException>()),
+    );
+  });
+
   test('the first read of every new image completes', () async {
     final bytes = base64Decode(
       'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=',

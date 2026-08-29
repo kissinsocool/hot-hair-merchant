@@ -6,12 +6,20 @@ import 'dart:html' as html;
 const int _maxImageBytes = 5 * 1024 * 1024;
 const int _maxImageSide = 1920;
 const double _imageQuality = 0.8;
+const String _acceptedImageTypes = 'image/jpeg,image/png,image/webp';
 
 class ImageUploadTooLargeException implements Exception {
   const ImageUploadTooLargeException();
 
   @override
   String toString() => '图片压缩后仍超过5MB，请换一张更小的图片';
+}
+
+class ImageUploadDecodeException implements Exception {
+  const ImageUploadDecodeException();
+
+  @override
+  String toString() => '图片读取失败，请上传有效的JPG、PNG或WebP图片；如果图片尺寸过大，请先压缩后重试';
 }
 
 class PickedImage {
@@ -30,7 +38,7 @@ class PickedImage {
 
 Future<PickedImage?> pickImageForUpload() async {
   final input = html.FileUploadInputElement()
-    ..accept = 'image/*'
+    ..accept = _acceptedImageTypes
     ..multiple = false;
 
   await waitForFileSelection(input);
@@ -43,7 +51,7 @@ Future<PickedImage?> pickImageForUpload() async {
 
 Future<List<PickedImage>> pickImagesForUpload({int limit = 5}) async {
   final input = html.FileUploadInputElement()
-    ..accept = 'image/*'
+    ..accept = _acceptedImageTypes
     ..multiple = true;
 
   await waitForFileSelection(input);
@@ -70,31 +78,42 @@ Future<void> waitForFileSelection(
 
 Future<PickedImage> pickedImageFromFileForUpload(html.File file) async {
   final sourceUrl = html.Url.createObjectUrl(file);
-  final sourceImage = html.ImageElement(src: sourceUrl);
-  await sourceImage.onLoad.first;
+  try {
+    final sourceImage = html.ImageElement(src: sourceUrl);
+    try {
+      await sourceImage.decode();
+    } catch (_) {
+      throw const ImageUploadDecodeException();
+    }
 
-  final sourceWidth = sourceImage.naturalWidth;
-  final sourceHeight = sourceImage.naturalHeight;
-  final scale =
-      _maxImageSide /
-      [sourceWidth, sourceHeight].reduce((a, b) => a > b ? a : b);
-  final width = scale < 1 ? (sourceWidth * scale).round() : sourceWidth;
-  final height = scale < 1 ? (sourceHeight * scale).round() : sourceHeight;
-  final canvas = html.CanvasElement(width: width, height: height);
-  canvas.context2D.drawImageScaled(sourceImage, 0, 0, width, height);
-  html.Url.revokeObjectUrl(sourceUrl);
+    final sourceWidth = sourceImage.naturalWidth;
+    final sourceHeight = sourceImage.naturalHeight;
+    if (sourceWidth <= 0 || sourceHeight <= 0) {
+      throw const ImageUploadDecodeException();
+    }
 
-  final dataUrl = canvas.toDataUrl('image/jpeg', _imageQuality);
-  if (_dataUrlBytes(dataUrl) > _maxImageBytes) {
-    throw const ImageUploadTooLargeException();
+    final scale =
+        _maxImageSide /
+        [sourceWidth, sourceHeight].reduce((a, b) => a > b ? a : b);
+    final width = scale < 1 ? (sourceWidth * scale).round() : sourceWidth;
+    final height = scale < 1 ? (sourceHeight * scale).round() : sourceHeight;
+    final canvas = html.CanvasElement(width: width, height: height);
+    canvas.context2D.drawImageScaled(sourceImage, 0, 0, width, height);
+
+    final dataUrl = canvas.toDataUrl('image/jpeg', _imageQuality);
+    if (_dataUrlBytes(dataUrl) > _maxImageBytes) {
+      throw const ImageUploadTooLargeException();
+    }
+
+    return PickedImage(
+      fileName: '${file.name.replaceFirst(RegExp(r'\.[^.]*$'), '')}.jpg',
+      base64Data: dataUrl,
+      width: width,
+      height: height,
+    );
+  } finally {
+    html.Url.revokeObjectUrl(sourceUrl);
   }
-
-  return PickedImage(
-    fileName: '${file.name.replaceFirst(RegExp(r'\.[^.]*$'), '')}.jpg',
-    base64Data: dataUrl,
-    width: width,
-    height: height,
-  );
 }
 
 int _dataUrlBytes(String dataUrl) {
