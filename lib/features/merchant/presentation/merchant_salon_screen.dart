@@ -290,7 +290,7 @@ class _MerchantSalonScreenState extends State<MerchantSalonScreen> {
       _showTopMessage('店名已存在，不能保存成功');
     } catch (e) {
       if (!mounted) return;
-      _showTopMessage('保存失败: $e');
+      _showTopMessage(userFacingApiError(e, fallback: '保存失败，请稍后重试'));
     } finally {
       if (mounted) setState(() => _isSaving = false);
     }
@@ -480,7 +480,7 @@ class _MerchantSalonScreenState extends State<MerchantSalonScreen> {
       );
     } catch (e) {
       if (!mounted) return;
-      _showTopMessage('重新定位失败: $e');
+      _showTopMessage(userFacingApiError(e, fallback: '重新定位失败，请稍后重试'));
     } finally {
       if (mounted) setState(() => _isGeocoding = false);
     }
@@ -762,7 +762,7 @@ class _MerchantSalonScreenState extends State<MerchantSalonScreen> {
       return await pickImageForUpload();
     } catch (e) {
       if (mounted) {
-        _showTopMessage('$e');
+        _showTopMessage(userFacingApiError(e, fallback: '图片选择失败，请重试'));
       }
       return null;
     }
@@ -773,7 +773,7 @@ class _MerchantSalonScreenState extends State<MerchantSalonScreen> {
       return await pickImagesForUpload(limit: limit);
     } catch (e) {
       if (mounted) {
-        _showTopMessage('$e');
+        _showTopMessage(userFacingApiError(e, fallback: '图片选择失败，请重试'));
       }
       return [];
     }
@@ -834,7 +834,7 @@ class _MerchantSalonScreenState extends State<MerchantSalonScreen> {
       _showTopMessage('头像已上传，请保存店铺信息');
     } catch (e) {
       if (!mounted) return;
-      _showTopMessage('头像上传失败: $e');
+      _showTopMessage(userFacingApiError(e, fallback: '头像上传失败，请稍后重试'));
     } finally {
       if (mounted) setState(() => _uploadingStaffIndex = null);
     }
@@ -862,7 +862,7 @@ class _MerchantSalonScreenState extends State<MerchantSalonScreen> {
       _showTopMessage('封面已上传，请保存店铺信息');
     } catch (e) {
       if (!mounted) return;
-      _showTopMessage('封面上传失败: $e');
+      _showTopMessage(userFacingApiError(e, fallback: '封面上传失败，请稍后重试'));
     } finally {
       if (mounted) setState(() => _isUploadingCover = false);
     }
@@ -907,7 +907,7 @@ class _MerchantSalonScreenState extends State<MerchantSalonScreen> {
       _showTopMessage('轮播图已上传，请保存店铺信息');
     } catch (e) {
       if (!mounted) return;
-      _showTopMessage('轮播图上传失败: $e');
+      _showTopMessage(userFacingApiError(e, fallback: '轮播图上传失败，请稍后重试'));
     } finally {
       if (mounted) setState(() => _isUploadingCover = false);
     }
@@ -935,7 +935,7 @@ class _MerchantSalonScreenState extends State<MerchantSalonScreen> {
       _showTopMessage('服务效果图已上传，请保存店铺信息');
     } catch (e) {
       if (!mounted) return;
-      _showTopMessage('服务效果图上传失败: $e');
+      _showTopMessage(userFacingApiError(e, fallback: '服务效果图上传失败，请稍后重试'));
     } finally {
       if (mounted) setState(() => _uploadingServiceIndex = null);
     }
@@ -1200,8 +1200,92 @@ class _MerchantSalonScreenState extends State<MerchantSalonScreen> {
           maxLength: 200,
         ),
         _buildCoverImagesUploader(),
+        _buildWeeklyClosedDaySection(),
         _buildClosedDatesSection(),
       ],
+    );
+  }
+
+  List<int> _weeklyClosedDays() =>
+      ((_salon['weeklyClosedDays'] as List?) ?? const [])
+          .whereType<num>()
+          .map((day) => day.toInt())
+          .where((day) => day >= 1 && day <= 7)
+          .toSet()
+          .toList()
+        ..sort();
+
+  Widget _buildWeeklyClosedDaySection() {
+    const weekdayNames = ['周一', '周二', '周三', '周四', '周五', '周六', '周日'];
+    final selectedDays = _weeklyClosedDays().toSet();
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.only(top: 12),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: AppTheme.bgCream,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: AppTheme.accentBeige),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Row(
+            children: [
+              Icon(Icons.event_repeat_outlined, color: AppTheme.primaryPink),
+              SizedBox(width: 8),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      '定休日',
+                      style: TextStyle(
+                        color: AppTheme.textDark,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    SizedBox(height: 4),
+                    Text(
+                      '可选择每周固定休息的日期',
+                      style: TextStyle(color: Colors.grey, fontSize: 12),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              for (var day = 1; day <= weekdayNames.length; day++)
+                ChoiceChip(
+                  key: ValueKey('weekly-closed-day-$day'),
+                  label: Text(weekdayNames[day - 1]),
+                  selected: selectedDays.contains(day),
+                  showCheckmark: false,
+                  backgroundColor: Colors.grey[200],
+                  selectedColor: AppTheme.primaryPink,
+                  labelStyle: TextStyle(
+                    color: selectedDays.contains(day)
+                        ? Colors.white
+                        : AppTheme.textDark,
+                  ),
+                  onSelected: (selected) => setState(() {
+                    if (selected) {
+                      selectedDays.add(day);
+                    } else {
+                      selectedDays.remove(day);
+                    }
+                    _salon['weeklyClosedDays'] = selectedDays.toList()..sort();
+                  }),
+                ),
+            ],
+          ),
+        ],
+      ),
     );
   }
 
@@ -1221,10 +1305,10 @@ class _MerchantSalonScreenState extends State<MerchantSalonScreen> {
   Future<void> _addClosedDates() async {
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
-    final lastDayOfTargetMonth = DateTime(today.year, today.month + 3, 0).day;
+    final lastDayOfTargetMonth = DateTime(today.year, today.month + 2, 0).day;
     final lastDate = DateTime(
       today.year,
-      today.month + 2,
+      today.month + 1,
       today.day > lastDayOfTargetMonth ? lastDayOfTargetMonth : today.day,
     );
     final range = await showDateRangePicker(
@@ -1233,7 +1317,7 @@ class _MerchantSalonScreenState extends State<MerchantSalonScreen> {
       firstDate: today,
       lastDate: lastDate,
       currentDate: today,
-      helpText: '选择休息日（单日请点选同一天）',
+      helpText: '选择其它休息日（单日请点选同一天）',
       cancelText: '取消',
       confirmText: '添加',
     );
@@ -1273,7 +1357,7 @@ class _MerchantSalonScreenState extends State<MerchantSalonScreen> {
               const SizedBox(width: 8),
               const Expanded(
                 child: Text(
-                  '休息日',
+                  '其它休息日',
                   style: TextStyle(
                     color: AppTheme.textDark,
                     fontWeight: FontWeight.bold,
@@ -1289,12 +1373,12 @@ class _MerchantSalonScreenState extends State<MerchantSalonScreen> {
           ),
           const SizedBox(height: 8),
           Text(
-            '可选择今天起两个月内的单日或连续日期，休息日将停止接受预约。',
+            '可选择今天起一个月内的单日或连续日期，所选日期将停止接受预约。',
             style: TextStyle(color: Colors.grey[600], fontSize: 12),
           ),
           const SizedBox(height: 10),
           if (dates.isEmpty)
-            Text('暂未设置休息日', style: TextStyle(color: Colors.grey[600]))
+            Text('暂未设置其它休息日', style: TextStyle(color: Colors.grey[600]))
           else
             Wrap(
               spacing: 8,

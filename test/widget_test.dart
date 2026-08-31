@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:dio/dio.dart';
 import 'package:hot_pepper_merchant/core/network/api_client.dart';
+import 'package:hot_pepper_merchant/core/theme/app_theme.dart';
 import 'package:hot_pepper_merchant/features/auth/data/merchant_auth_repository.dart';
 import 'package:hot_pepper_merchant/features/auth/presentation/merchant_login_screen.dart';
 import 'package:hot_pepper_merchant/features/admin/presentation/admin_dashboard_screen.dart';
@@ -58,6 +59,27 @@ void main() {
     expect(message, isNot(contains('409')));
     expect(message, isNot(contains('DioException')));
   });
+
+  test(
+    'expired merchant sessions show a login prompt instead of Dio details',
+    () {
+      final request = RequestOptions(path: '/merchant/uploads/sign');
+      final error = DioException(
+        requestOptions: request,
+        response: Response<dynamic>(
+          requestOptions: request,
+          statusCode: 401,
+          data: {'message': 'Merchant login expired'},
+        ),
+        type: DioExceptionType.badResponse,
+      );
+
+      final message = userFacingApiError(error);
+
+      expect(message, '登录已失效，请重新登录');
+      expect(message, isNot(contains('DioException')));
+    },
+  );
 
   test(
     'API errors keep readable backend messages and explain network failures',
@@ -153,6 +175,47 @@ void main() {
         .map((field) => field.initialValue);
     expect(roles, containsAll(<String?>[null, '高级理发师']));
     expect(experienceYears, containsAll(<int?>[null, 5]));
+  });
+
+  testWidgets('店铺资料区分定休日和其它休息日', (tester) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: MerchantSalonScreen(
+          repository: _SalonRepositoryWithExistingItems(),
+          enableRealtime: false,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('定休日'), findsOneWidget);
+    expect(find.text('其它休息日'), findsOneWidget);
+    expect(find.text('休息日'), findsNothing);
+    expect(find.textContaining('一个月内'), findsOneWidget);
+
+    final monday = find.byKey(const ValueKey('weekly-closed-day-1'));
+    final wednesday = find.byKey(const ValueKey('weekly-closed-day-3'));
+    expect(tester.widget<ChoiceChip>(monday).selected, isFalse);
+    expect(tester.widget<ChoiceChip>(monday).backgroundColor, Colors.grey[200]);
+
+    await tester.ensureVisible(monday);
+    await tester.pumpAndSettle();
+    await tester.tap(monday);
+    await tester.pump();
+    await tester.tap(wednesday);
+    await tester.pump();
+
+    expect(tester.widget<ChoiceChip>(monday).selected, isTrue);
+    expect(tester.widget<ChoiceChip>(wednesday).selected, isTrue);
+    expect(
+      tester.widget<ChoiceChip>(monday).selectedColor,
+      AppTheme.primaryPink,
+    );
+
+    await tester.tap(monday);
+    await tester.pump();
+    expect(tester.widget<ChoiceChip>(monday).selected, isFalse);
+    expect(tester.widget<ChoiceChip>(wednesday).selected, isTrue);
   });
 
   testWidgets('keeps the admin entry off the merchant login screen', (
