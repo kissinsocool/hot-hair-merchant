@@ -198,6 +198,41 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('套餐简介在窄屏和大字体下仍显示内容', (tester) async {
+    tester.view.physicalSize = const Size(390, 844);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        builder: (context, child) => MediaQuery(
+          data: MediaQuery.of(
+            context,
+          ).copyWith(textScaler: const TextScaler.linear(1.3)),
+          child: child!,
+        ),
+        home: MerchantSalonScreen(
+          repository: _SalonRepositoryWithExistingItems(),
+          enableRealtime: false,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('服务套餐'));
+    await tester.pumpAndSettle();
+
+    final introduction = find.byWidgetPredicate(
+      (widget) => widget is TextField && widget.decoration?.labelText == '简介',
+    );
+    expect(introduction, findsOneWidget);
+    expect(
+      find.descendant(of: introduction, matching: find.text('已有简介')),
+      findsOneWidget,
+    );
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('店铺资料区分定休日和其它休息日', (tester) async {
     await tester.pumpWidget(
       MaterialApp(

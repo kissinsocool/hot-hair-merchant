@@ -1669,69 +1669,68 @@ class _MerchantSalonScreenState extends State<MerchantSalonScreen> {
   Widget _buildServiceSummaryRow(int index, Map<String, dynamic> service) {
     return LayoutBuilder(
       builder: (context, constraints) {
+        final isNarrow = constraints.maxWidth < 600;
         final imageWidth = constraints.maxWidth * 0.25;
-        const summaryHeight = 398.0;
-        const imageModuleHeight = summaryHeight - 12;
+
+        final image = SizedBox(
+          width: isNarrow ? double.infinity : imageWidth,
+          child: _buildImageUploader(
+            imageUrl: service['imageUrl']?.toString() ?? '',
+            title: '服务效果图',
+            emptyText: '尚未上传效果图',
+            uploadedText: '已上传效果图',
+            isUploading: _uploadingServiceIndex == index,
+            onUpload: () => _uploadServiceImage(index),
+            aspectRatio: 1,
+            compactUploadButton: true,
+          ),
+        );
+        final priceAndDuration = isNarrow
+            ? Column(
+                children: [
+                  _buildServicePriceField(service),
+                  _buildServiceDurationDropdown(service),
+                ],
+              )
+            : Row(
+                children: [
+                  Expanded(child: _buildServicePriceField(service)),
+                  const SizedBox(width: 12),
+                  Expanded(child: _buildServiceDurationDropdown(service)),
+                ],
+              );
+        final fields = Column(
+          children: [
+            _buildTextField('套餐名称', service['name'], (value) {
+              service['name'] = value;
+            }, maxLength: 10),
+            _buildServiceTags(service),
+            priceAndDuration,
+            _buildTextField(
+              '简介',
+              service['note'],
+              (value) {
+                service['note'] = value;
+              },
+              minLines: 3,
+              maxLines: 5,
+              maxLength: 60,
+            ),
+          ],
+        );
 
         return Padding(
           padding: const EdgeInsets.only(bottom: 12),
-          child: SizedBox(
-            height: summaryHeight,
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                SizedBox(
-                  width: imageWidth,
-                  height: imageModuleHeight,
-                  child: _buildImageUploader(
-                    imageUrl: service['imageUrl']?.toString() ?? '',
-                    title: '服务效果图',
-                    emptyText: '尚未上传效果图',
-                    uploadedText: '已上传效果图',
-                    isUploading: _uploadingServiceIndex == index,
-                    onUpload: () => _uploadServiceImage(index),
-                    aspectRatio: 1,
-                    compactUploadButton: true,
-                  ),
+          child: isNarrow
+              ? Column(children: [image, fields])
+              : Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    image,
+                    const SizedBox(width: 12),
+                    Expanded(child: fields),
+                  ],
                 ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: SizedBox(
-                    height: summaryHeight,
-                    child: Column(
-                      children: [
-                        _buildTextField('套餐名称', service['name'], (value) {
-                          service['name'] = value;
-                        }, maxLength: 10),
-                        _buildServiceTags(service),
-                        Row(
-                          children: [
-                            Expanded(child: _buildServicePriceField(service)),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: _buildServiceDurationDropdown(service),
-                            ),
-                          ],
-                        ),
-                        Expanded(
-                          child: _buildTextField(
-                            '简介',
-                            service['note'],
-                            (value) {
-                              service['note'] = value;
-                            },
-                            maxLines: null,
-                            expands: true,
-                            maxLength: 60,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
         );
       },
     );
@@ -1828,69 +1827,77 @@ class _MerchantSalonScreenState extends State<MerchantSalonScreen> {
   Widget _buildStaffSummaryRow(int index, Map<String, dynamic> profile) {
     return LayoutBuilder(
       builder: (context, constraints) {
+        final isNarrow = constraints.maxWidth < 600;
         final imageWidth = constraints.maxWidth * 0.25;
-        const summaryHeight = 334.0;
-        const imageModuleHeight = summaryHeight - 12;
+
+        final avatar = SizedBox(
+          width: isNarrow ? double.infinity : imageWidth,
+          height: isNarrow ? 280 : 322,
+          child: _buildAvatarUploader(index, profile),
+        );
+        final identityFields = isNarrow
+            ? Column(
+                children: [
+                  _buildTextField('姓名', profile['name'], (value) {
+                    profile['name'] = value;
+                  }, maxLength: 100),
+                  _buildStaffRoleDropdown(profile),
+                ],
+              )
+            : Row(
+                children: [
+                  Expanded(
+                    child: _buildTextField('姓名', profile['name'], (value) {
+                      profile['name'] = value;
+                    }, maxLength: 100),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(child: _buildStaffRoleDropdown(profile)),
+                ],
+              );
+        final experienceFields = isNarrow
+            ? Column(
+                children: [
+                  _buildExperienceDropdown(profile),
+                  _buildExtraServiceFeeDropdown(profile),
+                ],
+              )
+            : Row(
+                children: [
+                  Expanded(child: _buildExperienceDropdown(profile)),
+                  const SizedBox(width: 12),
+                  Expanded(child: _buildExtraServiceFeeDropdown(profile)),
+                ],
+              );
+        final fields = Column(
+          children: [
+            identityFields,
+            experienceFields,
+            _buildTextField(
+              '个人简介',
+              profile['bio'],
+              (value) {
+                profile['bio'] = value;
+              },
+              minLines: 3,
+              maxLines: 5,
+              maxLength: 1000,
+            ),
+          ],
+        );
 
         return Padding(
           padding: const EdgeInsets.only(bottom: 12),
-          child: SizedBox(
-            height: summaryHeight,
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                SizedBox(
-                  width: imageWidth,
-                  height: imageModuleHeight,
-                  child: _buildAvatarUploader(index, profile),
+          child: isNarrow
+              ? Column(children: [avatar, const SizedBox(height: 12), fields])
+              : Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    avatar,
+                    const SizedBox(width: 12),
+                    Expanded(child: fields),
+                  ],
                 ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: SizedBox(
-                    height: summaryHeight,
-                    child: Column(
-                      children: [
-                        Row(
-                          children: [
-                            Expanded(
-                              child: _buildTextField('姓名', profile['name'], (
-                                value,
-                              ) {
-                                profile['name'] = value;
-                              }, maxLength: 100),
-                            ),
-                            const SizedBox(width: 12),
-                            Expanded(child: _buildStaffRoleDropdown(profile)),
-                          ],
-                        ),
-                        Row(
-                          children: [
-                            Expanded(child: _buildExperienceDropdown(profile)),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: _buildExtraServiceFeeDropdown(profile),
-                            ),
-                          ],
-                        ),
-                        Expanded(
-                          child: _buildTextField(
-                            '个人简介',
-                            profile['bio'],
-                            (value) {
-                              profile['bio'] = value;
-                            },
-                            maxLines: null,
-                            expands: true,
-                            maxLength: 1000,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
         );
       },
     );
@@ -2170,6 +2177,7 @@ class _MerchantSalonScreenState extends State<MerchantSalonScreen> {
   }) {
     return DropdownButtonFormField<String>(
       initialValue: value,
+      isExpanded: true,
       items: options
           .map((time) => DropdownMenuItem(value: time, child: Text(time)))
           .toList(),

@@ -321,6 +321,8 @@ class _MerchantLoginScreenState extends State<MerchantLoginScreen> {
       labelText: label,
       prefixIcon: Icon(icon),
       suffixIcon: suffixIcon,
+      isDense: true,
+      contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       filled: true,
       fillColor: AppTheme.white,
       border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
