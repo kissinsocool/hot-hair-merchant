@@ -31,7 +31,9 @@ class PickedImage {
 
 final ImagePicker _picker = ImagePicker();
 
-Future<PickedImage?> pickImageForUpload() async {
+Future<PickedImage?> pickImageForUpload({
+  Future<void> Function()? onProcessing,
+}) async {
   final image = await _picker.pickImage(
     source: ImageSource.gallery,
     maxWidth: _maxImageSide,
@@ -39,16 +41,21 @@ Future<PickedImage?> pickImageForUpload() async {
     imageQuality: _imageQuality,
   );
   if (image == null) return null;
+  if (onProcessing != null) await onProcessing();
 
   return _pickedImageFromXFile(image);
 }
 
-Future<List<PickedImage>> pickImagesForUpload({int limit = 5}) async {
+Future<List<PickedImage>> pickImagesForUpload({
+  int limit = 5,
+  Future<void> Function()? onProcessing,
+}) async {
   final images = await _picker.pickMultiImage(
     maxWidth: _maxImageSide,
     maxHeight: _maxImageSide,
     imageQuality: _imageQuality,
   );
+  if (images.isNotEmpty && onProcessing != null) await onProcessing();
   final pickedImages = <PickedImage>[];
   for (final image in images.take(limit)) {
     pickedImages.add(await _pickedImageFromXFile(image));

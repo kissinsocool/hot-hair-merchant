@@ -86,6 +86,7 @@ class _MerchantSalonScreenState extends State<MerchantSalonScreen> {
   bool _isSaving = false;
   bool _isGeocoding = false;
   bool _hasTriedAutoLocation = false;
+  bool _isParsingImage = false;
   bool _isUploadingCover = false;
   int? _uploadingStaffIndex;
   int? _uploadingServiceIndex;
@@ -759,24 +760,41 @@ class _MerchantSalonScreenState extends State<MerchantSalonScreen> {
 
   Future<PickedImage?> _pickImageOrShowError() async {
     try {
-      return await pickImageForUpload();
+      return await pickImageForUpload(onProcessing: _showParsingIndicator);
     } catch (e) {
       if (mounted) {
         _showTopMessage(userFacingApiError(e, fallback: '图片选择失败，请重试'));
       }
       return null;
+    } finally {
+      if (mounted && _isParsingImage) {
+        setState(() => _isParsingImage = false);
+      }
     }
   }
 
   Future<List<PickedImage>> _pickImagesOrShowError({required int limit}) async {
     try {
-      return await pickImagesForUpload(limit: limit);
+      return await pickImagesForUpload(
+        limit: limit,
+        onProcessing: _showParsingIndicator,
+      );
     } catch (e) {
       if (mounted) {
         _showTopMessage(userFacingApiError(e, fallback: '图片选择失败，请重试'));
       }
       return [];
+    } finally {
+      if (mounted && _isParsingImage) {
+        setState(() => _isParsingImage = false);
+      }
     }
+  }
+
+  Future<void> _showParsingIndicator() async {
+    if (!mounted) return;
+    setState(() => _isParsingImage = true);
+    await WidgetsBinding.instance.endOfFrame;
   }
 
   Future<Uint8List?> _cropPickedImage(
@@ -965,7 +983,41 @@ class _MerchantSalonScreenState extends State<MerchantSalonScreen> {
           _buildNotificationButton(),
         ],
       ),
-      body: _buildBody(),
+      body: Stack(
+        children: [
+          Positioned.fill(child: _buildBody()),
+          if (_isParsingImage)
+            const Positioned.fill(
+              child: Stack(
+                children: [
+                  ModalBarrier(dismissible: false, color: Colors.black26),
+                  Center(
+                    child: Card(
+                      child: Padding(
+                        padding: EdgeInsets.symmetric(
+                          horizontal: 24,
+                          vertical: 20,
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            SizedBox(
+                              width: 22,
+                              height: 22,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            ),
+                            SizedBox(width: 14),
+                            Text('正在解析图片，请稍候…'),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+        ],
+      ),
     );
   }
 
@@ -1639,6 +1691,7 @@ class _MerchantSalonScreenState extends State<MerchantSalonScreen> {
                     isUploading: _uploadingServiceIndex == index,
                     onUpload: () => _uploadServiceImage(index),
                     aspectRatio: 1,
+                    compactUploadButton: true,
                   ),
                 ),
                 const SizedBox(width: 12),
@@ -2553,7 +2606,60 @@ class _MerchantSalonScreenState extends State<MerchantSalonScreen> {
     required VoidCallback onUpload,
     required double aspectRatio,
     String uploadLabel = '上传',
+    bool compactUploadButton = false,
   }) {
+    final imageDetails = Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          title,
+          style: const TextStyle(
+            color: AppTheme.textDark,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+        const SizedBox(height: 4),
+        Text(
+          imageUrl.isEmpty ? emptyText : uploadedText,
+          style: TextStyle(color: Colors.grey[600], fontSize: 12),
+        ),
+      ],
+    );
+    final uploadButton = compactUploadButton
+        ? SizedBox(
+            width: double.infinity,
+            height: 32,
+            child: OutlinedButton.icon(
+              style: OutlinedButton.styleFrom(
+                padding: const EdgeInsets.symmetric(horizontal: 8),
+                minimumSize: const Size(0, 32),
+                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                visualDensity: VisualDensity.compact,
+                textStyle: const TextStyle(fontSize: 12),
+              ),
+              onPressed: isUploading ? null : onUpload,
+              icon: isUploading
+                  ? const SizedBox(
+                      width: 12,
+                      height: 12,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Icon(Icons.upload, size: 14),
+              label: Text(isUploading ? '上传中' : uploadLabel),
+            ),
+          )
+        : OutlinedButton.icon(
+            onPressed: isUploading ? null : onUpload,
+            icon: isUploading
+                ? const SizedBox(
+                    width: 16,
+                    height: 16,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Icon(Icons.upload),
+            label: Text(uploadLabel),
+          );
+
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
       padding: const EdgeInsets.all(12),
@@ -2592,41 +2698,18 @@ class _MerchantSalonScreenState extends State<MerchantSalonScreen> {
             ),
           ),
           const SizedBox(height: 12),
-          Row(
-            children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      title,
-                      style: const TextStyle(
-                        color: AppTheme.textDark,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      imageUrl.isEmpty ? emptyText : uploadedText,
-                      style: TextStyle(color: Colors.grey[600], fontSize: 12),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(width: 12),
-              OutlinedButton.icon(
-                onPressed: isUploading ? null : onUpload,
-                icon: isUploading
-                    ? const SizedBox(
-                        width: 16,
-                        height: 16,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      )
-                    : const Icon(Icons.upload),
-                label: Text(uploadLabel),
-              ),
-            ],
-          ),
+          if (compactUploadButton) ...[
+            imageDetails,
+            const SizedBox(height: 8),
+            uploadButton,
+          ] else
+            Row(
+              children: [
+                Expanded(child: imageDetails),
+                const SizedBox(width: 12),
+                uploadButton,
+              ],
+            ),
         ],
       ),
     );

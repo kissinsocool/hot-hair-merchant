@@ -10,17 +10,23 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:hot_pepper_merchant/features/merchant/data/image_upload_picker_web.dart';
 
 void main() {
-  test(
-    'file selection catches a change fired while the picker closes',
-    () async {
+  test('file input stays attached while the picker is open', () async {
+    for (var attempt = 0; attempt < 100; attempt += 1) {
       final input = html.FileUploadInputElement();
+      var wasAttachedWhenOpened = false;
 
       await waitForFileSelection(
         input,
-        openPicker: () => input.dispatchEvent(html.Event('change')),
+        openPicker: () {
+          wasAttachedWhenOpened = html.document.body?.contains(input) == true;
+          input.dispatchEvent(html.Event('change'));
+        },
       ).timeout(const Duration(milliseconds: 100));
-    },
-  );
+
+      expect(wasAttachedWhenOpened, isTrue);
+      expect(html.document.body?.contains(input), isFalse);
+    }
+  });
 
   test('invalid image reports an error instead of hanging', () async {
     final file = html.File(
@@ -57,24 +63,37 @@ void main() {
     }
   });
 
-  test('the first read of a large image completes without retrying', () async {
-    final canvas = html.CanvasElement(width: 4000, height: 3000);
-    canvas.context2D.fillStyle = '#ff69b4';
-    canvas.context2D.fillRect(0, 0, canvas.width!, canvas.height!);
+  test('a large high-entropy image is processed asynchronously', () async {
+    const width = 2600;
+    const height = 2200;
+    final canvas = html.CanvasElement(width: width, height: height);
+    final pixels = canvas.context2D.createImageData(width, height);
+    var value = 1;
+    for (var index = 0; index < pixels.data.length; index += 4) {
+      value = (value * 1664525 + 1013904223) & 0xffffffff;
+      pixels.data[index] = value & 0xff;
+      pixels.data[index + 1] = (value >> 8) & 0xff;
+      pixels.data[index + 2] = (value >> 16) & 0xff;
+      pixels.data[index + 3] = 0xff;
+    }
+    canvas.context2D.putImageData(pixels, 0, 0);
     final bytes = base64Decode(
-      canvas.toDataUrl('image/jpeg', 0.9).split(',').last,
+      canvas.toDataUrl('image/jpeg', 0.85).split(',').last,
     );
+    expect(bytes.length, greaterThan(3 * 1024 * 1024));
     final file = html.File(
       [bytes],
       'new-large-image.jpg',
       {'type': 'image/jpeg'},
     );
 
-    final image = await pickedImageFromFileForUpload(
-      file,
-    ).timeout(const Duration(seconds: 10));
+    for (var attempt = 0; attempt < 10; attempt += 1) {
+      final image = await pickedImageFromFileForUpload(
+        file,
+      ).timeout(const Duration(seconds: 30));
 
-    expect(image.width, 1920);
-    expect(image.height, 1440);
+      expect(image.width, 1920);
+      expect(image.height, 1625);
+    }
   });
 }

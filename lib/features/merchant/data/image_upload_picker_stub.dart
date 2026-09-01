@@ -12,12 +12,15 @@ class PickedImage {
   final int height;
 }
 
-Future<PickedImage?> pickImageForUpload() async {
+Future<PickedImage?> pickImageForUpload({
+  Future<void> Function()? onProcessing,
+}) async {
   return null;
 }
 
 Future<List<PickedImage>> pickImagesForUpload({
   int limit = 5,
+  Future<void> Function()? onProcessing,
 }) async {
   return [];
 }

@@ -7,6 +7,7 @@ const int _maxImageBytes = 5 * 1024 * 1024;
 const int _maxImageSide = 1920;
 const double _imageQuality = 0.8;
 const String _acceptedImageTypes = 'image/jpeg,image/png,image/webp';
+const Duration _imageProcessingTimeout = Duration(seconds: 30);
 
 class ImageUploadTooLargeException implements Exception {
   const ImageUploadTooLargeException();
@@ -36,7 +37,9 @@ class PickedImage {
   final int height;
 }
 
-Future<PickedImage?> pickImageForUpload() async {
+Future<PickedImage?> pickImageForUpload({
+  Future<void> Function()? onProcessing,
+}) async {
   final input = html.FileUploadInputElement()
     ..accept = _acceptedImageTypes
     ..multiple = false;
@@ -45,11 +48,16 @@ Future<PickedImage?> pickImageForUpload() async {
 
   final file = input.files?.isNotEmpty == true ? input.files!.first : null;
   if (file == null) return null;
+  if (onProcessing != null) await onProcessing();
+  await Future<void>.delayed(Duration.zero);
 
   return pickedImageFromFileForUpload(file);
 }
 
-Future<List<PickedImage>> pickImagesForUpload({int limit = 5}) async {
+Future<List<PickedImage>> pickImagesForUpload({
+  int limit = 5,
+  Future<void> Function()? onProcessing,
+}) async {
   final input = html.FileUploadInputElement()
     ..accept = _acceptedImageTypes
     ..multiple = true;
@@ -58,6 +66,8 @@ Future<List<PickedImage>> pickImagesForUpload({int limit = 5}) async {
 
   final files = input.files;
   if (files == null || files.isEmpty) return [];
+  if (onProcessing != null) await onProcessing();
+  await Future<void>.delayed(Duration.zero);
 
   final pickedImages = <PickedImage>[];
   for (final file in files.take(limit)) {
@@ -71,9 +81,19 @@ Future<void> waitForFileSelection(
   html.FileUploadInputElement input, {
   void Function()? openPicker,
 }) async {
-  final changed = input.onChange.first;
-  (openPicker ?? input.click)();
-  await changed;
+  input.style
+    ..position = 'fixed'
+    ..left = '-10000px'
+    ..top = '0'
+    ..opacity = '0';
+  html.document.body?.children.add(input);
+  try {
+    final selectionFinished = input.onChange.first;
+    (openPicker ?? input.click)();
+    await selectionFinished;
+  } finally {
+    input.remove();
+  }
 }
 
 Future<PickedImage> pickedImageFromFileForUpload(html.File file) async {
@@ -81,7 +101,7 @@ Future<PickedImage> pickedImageFromFileForUpload(html.File file) async {
   try {
     final sourceImage = html.ImageElement(src: sourceUrl);
     try {
-      await sourceImage.decode();
+      await sourceImage.decode().timeout(_imageProcessingTimeout);
     } catch (_) {
       throw const ImageUploadDecodeException();
     }
@@ -100,10 +120,13 @@ Future<PickedImage> pickedImageFromFileForUpload(html.File file) async {
     final canvas = html.CanvasElement(width: width, height: height);
     canvas.context2D.drawImageScaled(sourceImage, 0, 0, width, height);
 
-    final dataUrl = canvas.toDataUrl('image/jpeg', _imageQuality);
-    if (_dataUrlBytes(dataUrl) > _maxImageBytes) {
+    final blob = await canvas
+        .toBlob('image/jpeg', _imageQuality)
+        .timeout(_imageProcessingTimeout);
+    if (blob.size > _maxImageBytes) {
       throw const ImageUploadTooLargeException();
     }
+    final dataUrl = await _readBlobAsDataUrl(blob);
 
     return PickedImage(
       fileName: '${file.name.replaceFirst(RegExp(r'\.[^.]*$'), '')}.jpg',
@@ -116,9 +139,14 @@ Future<PickedImage> pickedImageFromFileForUpload(html.File file) async {
   }
 }
 
-int _dataUrlBytes(String dataUrl) {
-  final commaIndex = dataUrl.indexOf(',');
-  if (commaIndex == -1) return dataUrl.length;
-  final base64Length = dataUrl.length - commaIndex - 1;
-  return (base64Length * 3 / 4).ceil();
+Future<String> _readBlobAsDataUrl(html.Blob blob) async {
+  final reader = html.FileReader();
+  final completed = reader.onLoadEnd.first;
+  reader.readAsDataUrl(blob);
+  await completed.timeout(_imageProcessingTimeout);
+  final result = reader.result;
+  if (reader.error != null || result is! String) {
+    throw const ImageUploadDecodeException();
+  }
+  return result;
 }

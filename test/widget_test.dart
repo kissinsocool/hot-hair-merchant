@@ -177,6 +177,27 @@ void main() {
     expect(experienceYears, containsAll(<int?>[null, 5]));
   });
 
+  testWidgets('套餐图片上传按钮在 iPhone 14 宽度下不溢出', (tester) async {
+    tester.view.physicalSize = const Size(390, 844);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: MerchantSalonScreen(
+          repository: _SalonRepositoryWithExistingItems(),
+          enableRealtime: false,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('服务套餐'));
+    await tester.pumpAndSettle();
+
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('店铺资料区分定休日和其它休息日', (tester) async {
     await tester.pumpWidget(
       MaterialApp(
