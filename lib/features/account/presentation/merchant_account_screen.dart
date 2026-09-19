@@ -13,17 +13,20 @@ class MerchantAccountScreen extends StatefulWidget {
     super.key,
     required this.session,
     required this.onSessionChanged,
+    this.repository,
   });
 
   final MerchantSession session;
   final ValueChanged<MerchantSession> onSessionChanged;
+  final MerchantAccountRepository? repository;
 
   @override
   State<MerchantAccountScreen> createState() => _MerchantAccountScreenState();
 }
 
 class _MerchantAccountScreenState extends State<MerchantAccountScreen> {
-  final MerchantAccountRepository _repository = MerchantAccountRepository();
+  late final MerchantAccountRepository _repository =
+      widget.repository ?? MerchantAccountRepository();
   final _displayNameController = TextEditingController();
   final _currentPasswordController = TextEditingController();
   final _newPasswordController = TextEditingController();
@@ -37,15 +40,6 @@ class _MerchantAccountScreenState extends State<MerchantAccountScreen> {
   String _licenseUrl = '';
   String _licenseFileName = '';
   String _licenseBase64Data = '';
-  String _legalPersonIdFrontUrl = '';
-  String _legalPersonIdFrontFileName = '';
-  String _legalPersonIdFrontData = '';
-  String _legalPersonIdBackUrl = '';
-  String _legalPersonIdBackFileName = '';
-  String _legalPersonIdBackData = '';
-  String _addressProofUrl = '';
-  String _addressProofFileName = '';
-  String _addressProofData = '';
 
   @override
   void initState() {
@@ -100,11 +94,6 @@ class _MerchantAccountScreenState extends State<MerchantAccountScreen> {
       setState(() {
         _qualification = qualification;
         _licenseUrl = qualification['licenseUrl']?.toString() ?? '';
-        _legalPersonIdFrontUrl =
-            qualification['legalPersonIdFrontUrl']?.toString() ?? '';
-        _legalPersonIdBackUrl =
-            qualification['legalPersonIdBackUrl']?.toString() ?? '';
-        _addressProofUrl = qualification['addressProofUrl']?.toString() ?? '';
         _isLoadingQualification = false;
       });
     } catch (_) {
@@ -142,11 +131,8 @@ class _MerchantAccountScreenState extends State<MerchantAccountScreen> {
   }
 
   Future<void> _submitQualification() async {
-    if (_licenseUrl.isEmpty ||
-        _legalPersonIdFrontUrl.isEmpty ||
-        _legalPersonIdBackUrl.isEmpty ||
-        _addressProofUrl.isEmpty) {
-      _showMessage('请先上传全部资质材料');
+    if (_licenseUrl.isEmpty) {
+      _showMessage('请先上传营业执照');
       return;
     }
     setState(() => _isUploadingLicense = true);
@@ -155,38 +141,15 @@ class _MerchantAccountScreenState extends State<MerchantAccountScreen> {
         licenseUrl: _licenseUrl,
         fileName: _licenseFileName,
         base64Data: _licenseBase64Data,
-        legalPersonIdFrontUrl: _legalPersonIdFrontUrl,
-        legalPersonIdFrontFileName: _legalPersonIdFrontFileName,
-        legalPersonIdFrontData: _legalPersonIdFrontData,
-        legalPersonIdBackUrl: _legalPersonIdBackUrl,
-        legalPersonIdBackFileName: _legalPersonIdBackFileName,
-        legalPersonIdBackData: _legalPersonIdBackData,
-        addressProofUrl: _addressProofUrl,
-        addressProofFileName: _addressProofFileName,
-        addressProofData: _addressProofData,
       );
       if (!mounted) return;
       setState(() {
         _qualification = qualification;
         _licenseUrl = qualification['licenseUrl']?.toString() ?? _licenseUrl;
-        _legalPersonIdFrontUrl =
-            qualification['legalPersonIdFrontUrl']?.toString() ??
-            _legalPersonIdFrontUrl;
-        _legalPersonIdBackUrl =
-            qualification['legalPersonIdBackUrl']?.toString() ??
-            _legalPersonIdBackUrl;
-        _addressProofUrl =
-            qualification['addressProofUrl']?.toString() ?? _addressProofUrl;
         _licenseFileName = '';
         _licenseBase64Data = '';
-        _legalPersonIdFrontFileName = '';
-        _legalPersonIdFrontData = '';
-        _legalPersonIdBackFileName = '';
-        _legalPersonIdBackData = '';
-        _addressProofFileName = '';
-        _addressProofData = '';
       });
-      _showMessage('资质材料已提交后台审核');
+      _showMessage('营业执照已提交后台审核');
     } catch (_) {
       if (!mounted) return;
       _showMessage('提交失败，请稍后重试');
@@ -245,12 +208,15 @@ class _MerchantAccountScreenState extends State<MerchantAccountScreen> {
                       ),
                     ),
                     const SizedBox(height: 16),
-                    SwitchListTile(
-                      value: _changePassword,
-                      onChanged: (value) =>
-                          setState(() => _changePassword = value),
-                      title: const Text('修改登录密码'),
-                      contentPadding: EdgeInsets.zero,
+                    Material(
+                      color: Colors.transparent,
+                      child: SwitchListTile(
+                        value: _changePassword,
+                        onChanged: (value) =>
+                            setState(() => _changePassword = value),
+                        title: const Text('修改登录密码'),
+                        contentPadding: EdgeInsets.zero,
+                      ),
                     ),
                     if (_changePassword) ...[
                       const SizedBox(height: 8),
@@ -366,35 +332,6 @@ class _MerchantAccountScreenState extends State<MerchantAccountScreen> {
                     _licenseBase64Data = image.base64Data;
                   }),
                 ),
-                const SizedBox(height: 14),
-                _IdCardUploadCard(
-                  frontImageUrl: _legalPersonIdFrontUrl,
-                  backImageUrl: _legalPersonIdBackUrl,
-                  isUploading: _isUploadingLicense,
-                  onUploadFront: () => _pickDocument('法人身份证人像面', (image) {
-                    _legalPersonIdFrontUrl = image.base64Data;
-                    _legalPersonIdFrontFileName = image.fileName;
-                    _legalPersonIdFrontData = image.base64Data;
-                  }),
-                  onUploadBack: () => _pickDocument('法人身份证国徽面', (image) {
-                    _legalPersonIdBackUrl = image.base64Data;
-                    _legalPersonIdBackFileName = image.fileName;
-                    _legalPersonIdBackData = image.base64Data;
-                  }),
-                ),
-                const SizedBox(height: 14),
-                _DocumentUploadCard(
-                  title: '地址证明',
-                  hint: '请上传近三个月内的地址证明清晰图片',
-                  imageUrl: _addressProofUrl,
-                  icon: Icons.home_work_outlined,
-                  isUploading: _isUploadingLicense,
-                  onUpload: () => _pickDocument('地址证明', (image) {
-                    _addressProofUrl = image.base64Data;
-                    _addressProofFileName = image.fileName;
-                    _addressProofData = image.base64Data;
-                  }),
-                ),
                 if (status == 'rejected' &&
                     (_qualification['licenseRejectReason']?.toString() ?? '')
                         .isNotEmpty) ...[
@@ -417,7 +354,7 @@ class _MerchantAccountScreenState extends State<MerchantAccountScreen> {
                           ),
                         )
                       : const Icon(Icons.fact_check_outlined),
-                  label: const Text('提交全部材料审核'),
+                  label: const Text('提交营业执照审核'),
                 ),
               ],
             ),
@@ -431,126 +368,6 @@ class _MerchantAccountScreenState extends State<MerchantAccountScreen> {
       'rejected' => '审核驳回',
       _ => '未提交',
     };
-  }
-}
-
-class _IdCardUploadCard extends StatelessWidget {
-  const _IdCardUploadCard({
-    required this.frontImageUrl,
-    required this.backImageUrl,
-    required this.isUploading,
-    required this.onUploadFront,
-    required this.onUploadBack,
-  });
-
-  final String frontImageUrl;
-  final String backImageUrl;
-  final bool isUploading;
-  final VoidCallback onUploadFront;
-  final VoidCallback onUploadBack;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: AppTheme.bgCream,
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          const Text(
-            '法人身份证',
-            style: TextStyle(
-              fontWeight: FontWeight.bold,
-              color: AppTheme.textDark,
-            ),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            '请分别上传身份证人像面和国徽面，共两张图片',
-            style: TextStyle(fontSize: 12, color: Colors.grey[600]),
-          ),
-          const SizedBox(height: 12),
-          LayoutBuilder(
-            builder: (context, constraints) {
-              final slotWidth = constraints.maxWidth >= 600
-                  ? (constraints.maxWidth - 12) / 2
-                  : constraints.maxWidth;
-              return Wrap(
-                spacing: 12,
-                runSpacing: 12,
-                children: [
-                  SizedBox(
-                    width: slotWidth,
-                    child: _buildSide(
-                      label: '人像面',
-                      imageUrl: frontImageUrl,
-                      onUpload: onUploadFront,
-                    ),
-                  ),
-                  SizedBox(
-                    width: slotWidth,
-                    child: _buildSide(
-                      label: '国徽面',
-                      imageUrl: backImageUrl,
-                      onUpload: onUploadBack,
-                    ),
-                  ),
-                ],
-              );
-            },
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildSide({
-    required String label,
-    required String imageUrl,
-    required VoidCallback onUpload,
-  }) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        Text(label, style: const TextStyle(fontWeight: FontWeight.w600)),
-        const SizedBox(height: 8),
-        ClipRRect(
-          borderRadius: BorderRadius.circular(6),
-          child: Container(
-            height: 160,
-            color: AppTheme.white,
-            child: imageUrl.isEmpty
-                ? const Center(
-                    child: Icon(
-                      Icons.badge_outlined,
-                      size: 48,
-                      color: AppTheme.textDark,
-                    ),
-                  )
-                : imageUrl.startsWith('data:')
-                ? Image.memory(
-                    base64Decode(imageUrl.split(',').last),
-                    fit: BoxFit.contain,
-                  )
-                : Image.network(
-                    imageUrl,
-                    fit: BoxFit.contain,
-                    errorBuilder: (context, error, stackTrace) =>
-                        const Center(child: Icon(Icons.broken_image)),
-                  ),
-          ),
-        ),
-        const SizedBox(height: 10),
-        OutlinedButton.icon(
-          onPressed: isUploading ? null : onUpload,
-          icon: const Icon(Icons.upload_file_outlined),
-          label: Text(imageUrl.isEmpty ? '上传$label' : '重新上传$label'),
-        ),
-      ],
-    );
   }
 }
 

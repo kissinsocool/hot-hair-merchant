@@ -10,6 +10,15 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:hot_pepper_merchant/features/merchant/data/image_upload_picker_web.dart';
 
 void main() {
+  test('canceling the file picker completes and removes the input', () async {
+    final input = html.FileUploadInputElement();
+    await waitForFileSelection(
+      input,
+      openPicker: () => input.dispatchEvent(html.Event('cancel')),
+    ).timeout(const Duration(milliseconds: 100));
+    expect(html.document.body?.contains(input), isFalse);
+  });
+
   test('file input stays attached while the picker is open', () async {
     for (var attempt = 0; attempt < 100; attempt += 1) {
       final input = html.FileUploadInputElement();

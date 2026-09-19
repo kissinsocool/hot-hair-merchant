@@ -50,14 +50,16 @@ bool _isReadableChineseMessage(String? message) {
 }
 
 class ApiClient {
-  ApiClient()
-    : _dio = Dio(
-        BaseOptions(
-          baseUrl: _apiBaseUrl,
-          connectTimeout: const Duration(seconds: 5),
-          receiveTimeout: const Duration(seconds: 3),
-        ),
-      );
+  ApiClient({Dio? dio})
+    : _dio =
+          dio ??
+          Dio(
+            BaseOptions(
+              baseUrl: _apiBaseUrl,
+              connectTimeout: const Duration(seconds: 5),
+              receiveTimeout: const Duration(seconds: 3),
+            ),
+          );
 
   final Dio _dio;
   final Dio _uploadDio = Dio(
@@ -78,11 +80,13 @@ class ApiClient {
     String method = 'GET',
     dynamic data,
     Map<String, dynamic>? queryParameters,
+    CancelToken? cancelToken,
   }) {
     return _dio.request(
       path,
       data: data,
       queryParameters: queryParameters,
+      cancelToken: cancelToken,
       options: Options(
         method: method,
         headers: authToken == null
@@ -123,6 +127,7 @@ class ApiClient {
   Future<List<Map<String, dynamic>>> uploadBase64Images({
     required String type,
     required List<({String fileName, String base64Data})> images,
+    CancelToken? cancelToken,
   }) async {
     if (images.isEmpty) return [];
     final prepared = images.map((image) {
@@ -140,6 +145,7 @@ class ApiClient {
 
     final response = await request(
       '/merchant/uploads/sign',
+      cancelToken: cancelToken,
       method: 'POST',
       data: {
         'type': type,
@@ -164,6 +170,7 @@ class ApiClient {
         final upload = Map<String, dynamic>.from(uploads[index] as Map);
         return _uploadDio.post(
           upload['uploadUrl'] as String,
+          cancelToken: cancelToken,
           data: FormData.fromMap({
             ...Map<String, dynamic>.from(upload['fields'] as Map),
             'file': MultipartFile.fromBytes(

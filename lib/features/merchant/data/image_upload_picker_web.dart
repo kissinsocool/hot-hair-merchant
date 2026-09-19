@@ -87,11 +87,19 @@ Future<void> waitForFileSelection(
     ..top = '0'
     ..opacity = '0';
   html.document.body?.children.add(input);
+  final completed = Completer<void>();
+  void finish(html.Event event) {
+    if (!completed.isCompleted) completed.complete();
+  }
+
+  final changed = input.onChange.listen(finish);
+  input.addEventListener('cancel', finish);
   try {
-    final selectionFinished = input.onChange.first;
     (openPicker ?? input.click)();
-    await selectionFinished;
+    await completed.future;
   } finally {
+    await changed.cancel();
+    input.removeEventListener('cancel', finish);
     input.remove();
   }
 }

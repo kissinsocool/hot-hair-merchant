@@ -1,13 +1,18 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:dio/dio.dart';
 import 'package:hot_pepper_merchant/core/network/api_client.dart';
 import 'package:hot_pepper_merchant/core/theme/app_theme.dart';
+import 'package:hot_pepper_merchant/features/account/data/merchant_account_repository.dart';
+import 'package:hot_pepper_merchant/features/account/presentation/merchant_account_screen.dart';
 import 'package:hot_pepper_merchant/features/auth/data/merchant_auth_repository.dart';
+import 'package:hot_pepper_merchant/features/auth/data/merchant_session_store.dart';
 import 'package:hot_pepper_merchant/features/auth/presentation/merchant_login_screen.dart';
 import 'package:hot_pepper_merchant/features/admin/presentation/admin_dashboard_screen.dart';
 import 'package:hot_pepper_merchant/features/booking/domain/booking_order.dart';
+import 'package:hot_pepper_merchant/features/merchant/data/image_upload_picker.dart';
 import 'package:hot_pepper_merchant/features/merchant/data/merchant_salon_repository.dart';
 import 'package:hot_pepper_merchant/features/merchant/presentation/merchant_orders_screen.dart';
 import 'package:hot_pepper_merchant/features/merchant/presentation/merchant_salon_screen.dart';
@@ -20,7 +25,9 @@ class _SalonRepositoryWithExistingItems extends MerchantSalonRepository {
     'services': [
       {
         'name': '已有套餐',
-        'tags': ['洗剪吹'],
+        'promotionEnabled': false,
+        'promotionReviewStatus': 'unsubmitted',
+        'tagIds': ['wash_cut_blow'],
         'priceFen': 10000,
         'durationMinutes': 60,
         'note': '已有简介',
@@ -41,7 +48,439 @@ class _SalonRepositoryWithExistingItems extends MerchantSalonRepository {
   };
 }
 
+class _SuccessfulSalonRepository extends MerchantSalonRepository {
+  @override
+  Future<Map<String, dynamic>> fetchSalon() async => {
+    'name': '测试店铺',
+    'address': '测试地址',
+    'openingHours': '09:00-18:00',
+    'phone': '13800138000',
+    'description': '首页介绍',
+    'fullDescription': '关于我们',
+    'image': 'image',
+    'promoImages': ['promo'],
+    'services': [
+      {
+        'name': '套餐',
+        'tagIds': ['wash_cut_blow'],
+        'priceFen': 10000,
+        'durationMinutes': 60,
+        'note': '套餐介绍',
+        'imageUrl': 'service-image',
+      },
+    ],
+    'staff': [
+      {
+        'name': '理发师',
+        'role': '高级理发师',
+        'experience': '5年',
+        'extraServiceFeeFen': 1000,
+        'imageUrl': 'staff-image',
+        'bio': '理发师介绍',
+        'unavailableSlots': <String>[],
+      },
+    ],
+  };
+
+  @override
+  Future<Map<String, dynamic>> saveSalon(Map<String, dynamic> payload) async =>
+      {...payload, 'contentReviewStatus': 'approved'};
+}
+
+class _LicenseOnlyAccountRepository extends MerchantAccountRepository {
+  @override
+  Future<Map<String, dynamic>> fetchQualification() async => {
+    'licenseStatus': 'unsubmitted',
+    'publishStatus': 'offline',
+    'licenseUrl': '',
+  };
+}
+
 void main() {
+  test('后台待审核商家只按最后内容提交时间倒序排列，未提交的排最后', () {
+    final merchants = [
+      {'id': 'unsubmitted', 'contentReviewStatus': 'pending'},
+      {
+        'id': 'content-newest',
+        'contentReviewStatus': 'pending',
+        'contentSubmittedAt': '2026-09-14T12:00:00Z',
+      },
+      {
+        'id': 'content-older',
+        'contentReviewStatus': 'pending',
+        'contentSubmittedAt': '2026-09-14T11:00:00Z',
+      },
+      {
+        'id': 'license-only',
+        'licenseStatus': 'pending',
+        'licenseSubmittedAt': '2026-09-14T13:00:00Z',
+        'contentSubmittedAt': '2026-09-14T12:30:00Z',
+      },
+    ];
+
+    final sorted = sortMerchantsByContentSubmission(
+      merchants.map((merchant) => Map<String, dynamic>.from(merchant)),
+    ).map((merchant) => merchant['id']).toList();
+    expect(sorted.take(3), ['license-only', 'content-newest', 'content-older']);
+    expect(sorted.last, 'unsubmitted');
+  });
+
+  test('后台所有商家卡片标出最后内容提交时间', () {
+    expect(
+      merchantContentSubmissionText({
+        'contentReviewStatus': 'pending',
+        'contentSubmittedAt': '2026-09-14T12:34:00',
+      }),
+      '最后一次内容提交时间：2026-09-14 12:34',
+    );
+    expect(
+      merchantContentSubmissionText({'contentReviewStatus': 'pending'}),
+      '最后一次内容提交时间：暂无记录',
+    );
+    expect(
+      merchantContentSubmissionText({
+        'contentReviewStatus': 'approved',
+        'contentSubmittedAt': '2026-09-13T08:00:00',
+      }),
+      '最后一次内容提交时间：2026-09-13 08:00',
+    );
+  });
+
+  testWidgets('商家资质认证只要求上传营业执照', (tester) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: MerchantAccountScreen(
+          session: const MerchantSession(
+            token: 'token',
+            user: {
+              'username': 'merchant-test',
+              'displayName': '测试商家',
+              'salonId': 'salon-test',
+            },
+          ),
+          onSessionChanged: (_) {},
+          repository: _LicenseOnlyAccountRepository(),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('营业执照'), findsOneWidget);
+    expect(find.text('法人身份证'), findsNothing);
+    expect(find.text('地址证明'), findsNothing);
+    expect(find.text('提交营业执照审核'), findsOneWidget);
+  });
+
+  testWidgets('店铺表单未填完时显示黑底红色叉号', (tester) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: MerchantSalonScreen(
+          repository: _SalonRepositoryWithExistingItems(),
+          enableRealtime: false,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('保存并提交审核'));
+    await tester.pump();
+
+    final message = tester.widget<Container>(
+      find.byKey(const ValueKey('top-message')),
+    );
+    final decoration = message.decoration! as BoxDecoration;
+    expect(decoration.color, const Color(0xff323232));
+    expect(
+      find.descendant(
+        of: find.byKey(const ValueKey('top-message')),
+        matching: find.byIcon(Icons.cancel_outlined),
+      ),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('店铺表单提交成功使用指定绿色背景和文字', (tester) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: MerchantSalonScreen(
+          repository: _SuccessfulSalonRepository(),
+          enableRealtime: false,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('保存并提交审核'));
+    await tester.pump();
+    await tester.pump();
+
+    final message = tester.widget<Container>(
+      find.byKey(const ValueKey('top-message')),
+    );
+    final decoration = message.decoration! as BoxDecoration;
+    expect(decoration.color, const Color(0xffc5e9cb));
+    expect(
+      tester
+          .widget<Text>(
+            find.descendant(
+              of: find.byKey(const ValueKey('top-message')),
+              matching: find.text('免审核内容已保存并直接生效'),
+            ),
+          )
+          .style
+          ?.color,
+      const Color(0xff214623),
+    );
+    expect(
+      find.descendant(
+        of: find.byKey(const ValueKey('top-message')),
+        matching: find.byIcon(Icons.check_circle_outline),
+      ),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('店铺信息未提交时滑到套餐页再返回仍保留', (tester) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: MerchantSalonScreen(
+          repository: _SalonRepositoryWithExistingItems(),
+          enableRealtime: false,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final salonName = find.byWidgetPredicate(
+      (widget) => widget is TextField && widget.decoration?.labelText == '店铺名称',
+    );
+    tester
+        .widget<TextField>(salonName)
+        .controller!
+        .value = const TextEditingValue(
+      text: 'Draft Salon Name',
+      selection: TextSelection.collapsed(offset: 16),
+      composing: TextRange(start: 0, end: 16),
+    );
+    await tester.pump();
+    await tester.tap(find.text('服务套餐'));
+    await tester.pumpAndSettle();
+    expect(
+      DefaultTabController.of(tester.element(find.byType(TabBar))).index,
+      1,
+    );
+    await tester.tap(find.text('店铺信息'));
+    await tester.pumpAndSettle();
+
+    expect(
+      DefaultTabController.of(tester.element(find.byType(TabBar))).index,
+      0,
+    );
+    expect(find.text('Draft Salon Name'), findsOneWidget);
+  });
+
+  testWidgets('文本框输入后点击页面其他区域会失去焦点', (tester) async {
+    tester.view.physicalSize = const Size(800, 1000);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    await tester.pumpWidget(
+      MaterialApp(
+        home: MerchantSalonScreen(
+          repository: _SalonRepositoryWithExistingItems(),
+          enableRealtime: false,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final salonName = find.byWidgetPredicate(
+      (widget) => widget is TextField && widget.decoration?.labelText == '店铺名称',
+    );
+    await tester.tap(salonName);
+    await tester.pump();
+    final editableText = tester.widget<EditableText>(
+      find.descendant(of: salonName, matching: find.byType(EditableText)),
+    );
+    expect(editableText.focusNode.hasFocus, isTrue);
+
+    await tester.tap(find.text('店铺简介'));
+    await tester.pump();
+
+    expect(editableText.focusNode.hasFocus, isFalse);
+
+    final shortDescription = find.byWidgetPredicate(
+      (widget) =>
+          widget is TextField && widget.decoration?.labelText == '首页短介绍',
+    );
+    await tester.tap(salonName);
+    await tester.ensureVisible(shortDescription);
+    await tester.pumpAndSettle();
+    await tester.tap(shortDescription);
+    await tester.pump();
+
+    expect(editableText.focusNode.hasFocus, isFalse);
+    expect(
+      tester
+          .widget<EditableText>(
+            find.descendant(
+              of: shortDescription,
+              matching: find.byType(EditableText),
+            ),
+          )
+          .focusNode
+          .hasFocus,
+      isTrue,
+    );
+  });
+
+  testWidgets('点击文本框外部时不在 pointer down 阶段同步断开输入', (tester) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: MerchantSalonScreen(
+          repository: _SalonRepositoryWithExistingItems(),
+          enableRealtime: false,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final salonName = find.byWidgetPredicate(
+      (widget) => widget is TextField && widget.decoration?.labelText == '店铺名称',
+    );
+    await tester.tap(salonName);
+    await tester.pump();
+    expect(tester.widget<TextField>(salonName).onTapOutside, isNull);
+  });
+
+  test('multi-image cropping skips one image but closes only from X', () async {
+    final images = [
+      for (var index = 0; index < 3; index++)
+        PickedImage(
+          fileName: '$index.jpg',
+          base64Data: '',
+          width: 1,
+          height: 1,
+        ),
+    ];
+    var calls = 0;
+
+    final cropped = await cropPickedImageBatch(images, (
+      image,
+      index,
+      total,
+    ) async {
+      calls++;
+      return index == 1
+          ? (image: null, closeBatch: false)
+          : (image: Uint8List.fromList([index]), closeBatch: false);
+    });
+
+    expect(calls, 3);
+    expect(cropped, [
+      Uint8List.fromList([0]),
+      Uint8List.fromList([2]),
+    ]);
+
+    final lastCanceled = await cropPickedImageBatch(images, (
+      image,
+      index,
+      total,
+    ) async {
+      return index == total - 1
+          ? (image: null, closeBatch: false)
+          : (image: Uint8List.fromList([index]), closeBatch: false);
+    });
+    expect(lastCanceled, [
+      Uint8List.fromList([0]),
+      Uint8List.fromList([1]),
+    ]);
+
+    calls = 0;
+    final closed = await cropPickedImageBatch(images, (
+      image,
+      index,
+      total,
+    ) async {
+      calls++;
+      return (image: null, closeBatch: true);
+    });
+    expect(calls, 1);
+    expect(closed, isNull);
+  });
+
+  test('套餐标签使用稳定 ID 和前端展示文案', () {
+    expect(serviceTagOptions.map((tag) => tag.id), [
+      'wash_cut_blow',
+      'color',
+      'perm',
+      'care',
+      'styling',
+      'scalp_care',
+      'men',
+      'women',
+      'straight',
+      'curly',
+      'nutrition',
+    ]);
+    expect(serviceTagOptions.map((tag) => tag.label), [
+      '洗剪吹',
+      '染发',
+      '烫发',
+      '护理',
+      '发型设计',
+      '头皮护理',
+      '男士',
+      '女士',
+      '直发',
+      '卷发',
+      '营养',
+    ]);
+  });
+
+  test('service gallery supports legacy covers, ordering and clearing', () {
+    final service = <String, dynamic>{'imageUrl': 'first.jpg'};
+    expect(serviceImageUrls(service), ['first.jpg']);
+    setServiceImages(service, ['second.jpg', 'first.jpg']);
+    expect(serviceImageUrls(service), ['second.jpg', 'first.jpg']);
+    expect(service['imageUrl'], 'second.jpg');
+    setServiceImages(service, []);
+    expect(serviceImageUrls(service), isEmpty);
+    expect(service['imageUrl'], '');
+  });
+
+  test('promotion requests stay switched on and populate the admin table', () {
+    final service = <String, dynamic>{
+      'id': 'service-1',
+      'promotionEnabled': false,
+      'promotionReviewStatus': 'pending',
+    };
+    normalizeServicePromotionRequest(service);
+    expect(service['promotionEnabled'], isTrue);
+
+    final rows = servicePromotionRows([
+      {
+        'id': 'merchant-1',
+        'salon': {
+          'name': '测试店铺',
+          'services': [
+            {...service, 'name': '男士精剪'},
+            {
+              'id': 'service-2',
+              'name': '普通套餐',
+              'promotionReviewStatus': 'unsubmitted',
+            },
+          ],
+        },
+      },
+    ]);
+
+    expect(rows, hasLength(1));
+    expect(rows.single['merchantId'], 'merchant-1');
+    expect(rows.single['salonName'], '测试店铺');
+    expect(rows.single['name'], '男士精剪');
+  });
+
   test('API errors are converted to user-facing text without status codes', () {
     final error = DioException(
       requestOptions: RequestOptions(path: '/admin/merchants/1/publish'),
@@ -123,6 +562,57 @@ void main() {
     expect(staff, {'extraServiceFeeFen': 20100});
   });
 
+  testWidgets('选择套餐图片时不会显示上传中或锁住其他套餐，取消后可以重选', (tester) async {
+    const channel = MethodChannel('plugins.flutter.io/image_picker');
+    final selection = Completer<List<String>>();
+    var calls = 0;
+    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(channel, (
+      call,
+    ) {
+      if (call.method == 'pickMultiImage') {
+        calls++;
+        return selection.future;
+      }
+      return Future.value(null);
+    });
+    addTearDown(
+      () => tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+        channel,
+        null,
+      ),
+    );
+    await tester.pumpWidget(
+      MaterialApp(
+        home: MerchantSalonScreen(
+          repository: _SalonRepositoryWithExistingItems(),
+          enableRealtime: false,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('服务套餐'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('添加套餐'));
+    await tester.pump();
+    final buttons = find.widgetWithText(OutlinedButton, '上传并裁剪');
+    tester.widget<OutlinedButton>(buttons.first).onPressed!();
+    await tester.pump();
+    expect(calls, 1);
+    expect(find.text('上传中'), findsNothing);
+    expect(
+      tester
+          .widgetList<OutlinedButton>(buttons)
+          .every((button) => button.onPressed != null),
+      isTrue,
+    );
+    selection.complete([]);
+    await tester.pumpAndSettle();
+    expect(find.text('上传中'), findsNothing);
+    tester.widget<OutlinedButton>(buttons.first).onPressed!();
+    await tester.pumpAndSettle();
+    expect(calls, 2);
+  });
+
   testWidgets('新增套餐和理发师时表单不预选内容', (tester) async {
     await tester.pumpWidget(
       MaterialApp(
@@ -138,6 +628,20 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.byTooltip('添加套餐'));
     await tester.pump();
+
+    final promotionSwitches = find.descendant(
+      of: find.byTooltip('审核通过后展示在小程序分类推广页'),
+      matching: find.byType(Switch),
+    );
+    expect(
+      tester.widgetList<Switch>(promotionSwitches).every((item) => !item.value),
+      isTrue,
+    );
+    expect(find.text('推广'), findsNWidgets(2));
+
+    for (final tag in ['男士', '女士', '直发', '卷发', '营养']) {
+      expect(find.widgetWithText(FilterChip, tag), findsWidgets);
+    }
 
     final durations = tester
         .widgetList<DropdownButtonFormField<int>>(

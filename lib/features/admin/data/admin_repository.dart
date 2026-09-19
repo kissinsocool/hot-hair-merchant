@@ -107,6 +107,10 @@ class AdminRepository {
     return Map<String, dynamic>.from(data['user'] as Map);
   }
 
+  Future<void> deleteMerchant(String id) async {
+    await _apiClient.request('/admin/merchants/$id', method: 'DELETE');
+  }
+
   Future<Map<String, dynamic>> reviewMerchantLicense({
     required String id,
     required bool approve,
@@ -128,6 +132,21 @@ class AdminRepository {
   }) async {
     final response = await _apiClient.request(
       '/admin/merchants/$id/content',
+      method: 'PATCH',
+      data: {'action': approve ? 'approve' : 'reject', 'reason': reason},
+    );
+    final data = Map<String, dynamic>.from(response.data as Map);
+    return Map<String, dynamic>.from(data['merchant'] as Map);
+  }
+
+  Future<Map<String, dynamic>> reviewServicePromotion({
+    required String merchantId,
+    required String serviceId,
+    required bool approve,
+    String reason = '',
+  }) async {
+    final response = await _apiClient.request(
+      '/admin/merchants/$merchantId/services/$serviceId/promotion',
       method: 'PATCH',
       data: {'action': approve ? 'approve' : 'reject', 'reason': reason},
     );

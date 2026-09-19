@@ -50,9 +50,11 @@ class MerchantSalonRepository {
   Future<String> uploadImage({
     required String fileName,
     required String base64Data,
+    CancelToken? cancelToken,
   }) async {
     final uploads = await _apiClient.uploadBase64Images(
       type: 'public',
+      cancelToken: cancelToken,
       images: [(fileName: fileName, base64Data: base64Data)],
     );
     return uploads.single['url'] as String;

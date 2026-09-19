@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'package:crop_your_image/crop_your_image.dart';
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:geolocator/geolocator.dart';
@@ -31,12 +32,73 @@ int? parsePriceFen(String value) {
   return yuan * 100 + (cents.isEmpty ? 0 : int.parse(cents));
 }
 
+List<String> serviceImageUrls(Map<dynamic, dynamic> service) {
+  final images = service['imageUrls'];
+  return (images is List ? images : [service['imageUrl']])
+      .whereType<String>()
+      .map((image) => image.trim())
+      .where((image) => image.isNotEmpty)
+      .toSet()
+      .toList();
+}
+
+void setServiceImages(Map<String, dynamic> service, List<String> images) {
+  service['imageUrls'] = images;
+  service['imageUrl'] = images.isEmpty ? '' : images.first;
+}
+
 void setServiceDuration(Map<String, dynamic> service, int minutes) {
   service['durationMinutes'] = minutes;
 }
 
 void setStaffExtraServiceFee(Map<String, dynamic> staff, int fee) {
   staff['extraServiceFeeFen'] = fee * 100;
+}
+
+typedef CropPickedImageResult = ({Uint8List? image, bool closeBatch});
+
+Future<List<Uint8List>?> cropPickedImageBatch(
+  List<PickedImage> images,
+  Future<CropPickedImageResult> Function(
+    PickedImage image,
+    int index,
+    int total,
+  )
+  crop,
+) async {
+  final croppedImages = <Uint8List>[];
+  for (var index = 0; index < images.length; index++) {
+    final result = await crop(images[index], index, images.length);
+    if (result.closeBatch) return null;
+    if (result.image != null) croppedImages.add(result.image!);
+  }
+  return croppedImages;
+}
+
+const serviceTagOptions = <({String id, String label})>[
+  (id: 'wash_cut_blow', label: '洗剪吹'),
+  (id: 'color', label: '染发'),
+  (id: 'perm', label: '烫发'),
+  (id: 'care', label: '护理'),
+  (id: 'styling', label: '发型设计'),
+  (id: 'scalp_care', label: '头皮护理'),
+  (id: 'men', label: '男士'),
+  (id: 'women', label: '女士'),
+  (id: 'straight', label: '直发'),
+  (id: 'curly', label: '卷发'),
+  (id: 'nutrition', label: '营养'),
+];
+
+void normalizeServiceTagIds(Map<String, dynamic> service) {
+  service['tagIds'] =
+      (service['tagIds'] as List?)?.whereType<String>().toSet().toList() ??
+      <String>[];
+}
+
+void normalizeServicePromotionRequest(Map<String, dynamic> service) {
+  if (service['promotionReviewStatus'] == 'pending') {
+    service['promotionEnabled'] = true;
+  }
 }
 
 class MerchantSalonScreen extends StatefulWidget {
@@ -73,15 +135,6 @@ class _MerchantSalonScreenState extends State<MerchantSalonScreen> {
     6,
     (index) => (index + 1) * 30,
   );
-  static const List<String> _serviceTagOptions = [
-    '洗剪吹',
-    '染发',
-    '烫发',
-    '护理',
-    '发型设计',
-    '头皮护理',
-  ];
-
   bool _isLoading = true;
   bool _isSaving = false;
   bool _isGeocoding = false;
@@ -89,7 +142,7 @@ class _MerchantSalonScreenState extends State<MerchantSalonScreen> {
   bool _isParsingImage = false;
   bool _isUploadingCover = false;
   int? _uploadingStaffIndex;
-  int? _uploadingServiceIndex;
+  final Map<Map<String, dynamic>, CancelToken> _serviceUploads = {};
   String _errorMessage = '';
   Map<String, dynamic> _salon = {};
   List<Map<String, dynamic>> _services = [];
@@ -120,6 +173,9 @@ class _MerchantSalonScreenState extends State<MerchantSalonScreen> {
 
   @override
   void dispose() {
+    for (final upload in _serviceUploads.values) {
+      upload.cancel();
+    }
     _bookingUpdateSubscription?.cancel();
     _messageTimer?.cancel();
     _messageOverlay?.remove();
@@ -142,6 +198,8 @@ class _MerchantSalonScreenState extends State<MerchantSalonScreen> {
         _services = _mapList(salon['services']);
         _staff = _mapList(salon['staff']);
         for (final service in _services) {
+          normalizeServiceTagIds(service);
+          normalizeServicePromotionRequest(service);
           setServiceDuration(
             service,
             _normalizeServiceDurationMinutes(service['durationMinutes']),
@@ -221,7 +279,13 @@ class _MerchantSalonScreenState extends State<MerchantSalonScreen> {
     return value.map((item) => Map<String, dynamic>.from(item as Map)).toList();
   }
 
-  void _showTopMessage(String message) {
+  void _showTopMessage(
+    String message, {
+    Color iconColor = AppTheme.primaryPink,
+    IconData icon = Icons.info_outline,
+    Color backgroundColor = const Color(0xff323232),
+    Color textColor = Colors.white,
+  }) {
     final tabBar = _tabBarKey.currentContext?.findRenderObject() as RenderBox?;
     if (tabBar == null) return;
     final top = tabBar.localToGlobal(Offset(0, tabBar.size.height)).dy + 8;
@@ -236,9 +300,10 @@ class _MerchantSalonScreenState extends State<MerchantSalonScreen> {
         child: Material(
           color: Colors.transparent,
           child: Container(
+            key: const ValueKey('top-message'),
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
             decoration: BoxDecoration(
-              color: const Color(0xff323232),
+              color: backgroundColor,
               borderRadius: BorderRadius.circular(6),
               boxShadow: const [
                 BoxShadow(
@@ -248,7 +313,15 @@ class _MerchantSalonScreenState extends State<MerchantSalonScreen> {
                 ),
               ],
             ),
-            child: Text(message, style: const TextStyle(color: Colors.white)),
+            child: Row(
+              children: [
+                Icon(icon, color: iconColor, size: 20),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(message, style: TextStyle(color: textColor)),
+                ),
+              ],
+            ),
           ),
         ),
       ),
@@ -263,7 +336,11 @@ class _MerchantSalonScreenState extends State<MerchantSalonScreen> {
   Future<void> _saveSalon() async {
     final validationMessage = _validateSalonBeforeSave();
     if (validationMessage != null) {
-      _showTopMessage(validationMessage);
+      _showTopMessage(
+        validationMessage,
+        iconColor: Colors.redAccent,
+        icon: Icons.cancel_outlined,
+      );
       return;
     }
 
@@ -280,18 +357,38 @@ class _MerchantSalonScreenState extends State<MerchantSalonScreen> {
         _setSalonAddress(_salonAddressText());
         _services = _mapList(savedSalon['services']);
         _staff = _mapList(savedSalon['staff']);
+        for (final service in _services) {
+          normalizeServiceTagIds(service);
+          normalizeServicePromotionRequest(service);
+        }
       });
       _showTopMessage(
-        savedSalon['contentReviewStatus'] == 'pending'
+        _services.any(
+              (service) => service['promotionReviewStatus'] == 'pending',
+            )
+            ? '推广申请已提交审核'
+            : savedSalon['contentReviewStatus'] == 'pending'
             ? '需审核内容已提交审核'
             : '免审核内容已保存并直接生效',
+        iconColor: const Color(0xff214623),
+        icon: Icons.check_circle_outline,
+        backgroundColor: const Color(0xffc5e9cb),
+        textColor: const Color(0xff214623),
       );
     } on SalonNameExistsException {
       if (!mounted) return;
-      _showTopMessage('店名已存在，不能保存成功');
+      _showTopMessage(
+        '店名已存在，不能保存成功',
+        iconColor: Colors.redAccent,
+        icon: Icons.cancel_outlined,
+      );
     } catch (e) {
       if (!mounted) return;
-      _showTopMessage(userFacingApiError(e, fallback: '保存失败，请稍后重试'));
+      _showTopMessage(
+        userFacingApiError(e, fallback: '保存失败，请稍后重试'),
+        iconColor: Colors.redAccent,
+        icon: Icons.cancel_outlined,
+      );
     } finally {
       if (mounted) setState(() => _isSaving = false);
     }
@@ -322,14 +419,15 @@ class _MerchantSalonScreenState extends State<MerchantSalonScreen> {
     if (_services.isEmpty) return '请至少添加一个服务套餐';
     for (var i = 0; i < _services.length; i += 1) {
       final service = _services[i];
-      if (service['tags'] is! List || (service['tags'] as List).isEmpty) {
+      if (service['tagIds'] is! List || (service['tagIds'] as List).isEmpty) {
         return '请为第${i + 1}个套餐至少选择一个标签';
       }
-      if ((service['tags'] as List).length > 3) {
+      if ((service['tagIds'] as List).length > 3) {
         return '第${i + 1}个套餐最多选择3个标签';
       }
+      if (serviceImageUrls(service).isEmpty) return '请上传第${i + 1}个套餐服务效果图';
+      if (serviceImageUrls(service).length > 20) return '每个套餐最多上传20张效果图';
       for (final item in [
-        ('第${i + 1}个套餐服务效果图', service['imageUrl']),
         ('第${i + 1}个套餐名称', service['name']),
         ('第${i + 1}个套餐简介', service['note']),
       ]) {
@@ -566,7 +664,8 @@ class _MerchantSalonScreenState extends State<MerchantSalonScreen> {
       _services.insert(0, {
         'id': '',
         'name': '',
-        'tags': <String>[],
+        'promotionEnabled': false,
+        'tagIds': <String>[],
         'priceFen': null,
         'durationMinutes': null,
         'note': '',
@@ -797,20 +896,23 @@ class _MerchantSalonScreenState extends State<MerchantSalonScreen> {
     await WidgetsBinding.instance.endOfFrame;
   }
 
-  Future<Uint8List?> _cropPickedImage(
+  Future<CropPickedImageResult> _cropPickedImage(
     PickedImage pickedImage, {
     required String title,
     required double aspectRatio,
-  }) {
-    return showDialog<Uint8List>(
-      context: context,
-      barrierDismissible: false,
-      builder: (_) => _ImageCropDialog(
-        image: base64Decode(pickedImage.base64Data.split(',').last),
-        title: title,
-        aspectRatio: aspectRatio,
-      ),
-    );
+    bool showCloseButton = false,
+  }) async {
+    return await showDialog<CropPickedImageResult>(
+          context: context,
+          barrierDismissible: false,
+          builder: (_) => _ImageCropDialog(
+            image: base64Decode(pickedImage.base64Data.split(',').last),
+            title: title,
+            aspectRatio: aspectRatio,
+            showCloseButton: showCloseButton,
+          ),
+        ) ??
+        (image: null, closeBatch: true);
   }
 
   ({String fileName, String base64Data}) _croppedUploadData(
@@ -833,11 +935,12 @@ class _MerchantSalonScreenState extends State<MerchantSalonScreen> {
   Future<void> _uploadStaffAvatar(int index) async {
     final pickedImage = await _pickImageOrShowError();
     if (pickedImage == null || !mounted) return;
-    final croppedImage = await _cropPickedImage(
+    final cropResult = await _cropPickedImage(
       pickedImage,
       title: '裁剪理发师图片（5:6）',
       aspectRatio: 5 / 6,
     );
+    final croppedImage = cropResult.image;
     if (croppedImage == null || !mounted) return;
     final upload = _croppedUploadData(croppedImage, 'staff');
 
@@ -861,11 +964,12 @@ class _MerchantSalonScreenState extends State<MerchantSalonScreen> {
   Future<void> _uploadCoverImage() async {
     final pickedImage = await _pickImageOrShowError();
     if (pickedImage == null || !mounted) return;
-    final croppedImage = await _cropPickedImage(
+    final cropResult = await _cropPickedImage(
       pickedImage,
       title: '裁剪封面图（3:2）',
       aspectRatio: 3 / 2,
     );
+    final croppedImage = cropResult.image;
     if (croppedImage == null || !mounted) return;
     final upload = _croppedUploadData(croppedImage, 'cover');
 
@@ -898,16 +1002,16 @@ class _MerchantSalonScreenState extends State<MerchantSalonScreen> {
     if (pickedImages.isEmpty) return;
     if (!mounted) return;
 
-    final croppedImages = <Uint8List>[];
-    for (var i = 0; i < pickedImages.length; i += 1) {
-      final croppedImage = await _cropPickedImage(
-        pickedImages[i],
-        title: '裁剪轮播图 ${i + 1}/${pickedImages.length}（1.2:1）',
+    final croppedImages = await cropPickedImageBatch(
+      pickedImages,
+      (image, index, total) => _cropPickedImage(
+        image,
+        title: '裁剪轮播图 ${index + 1}/$total（1.2:1）',
         aspectRatio: 1.2,
-      );
-      if (croppedImage == null || !mounted) return;
-      croppedImages.add(croppedImage);
-    }
+        showCloseButton: true,
+      ),
+    );
+    if (croppedImages == null || croppedImages.isEmpty || !mounted) return;
 
     setState(() => _isUploadingCover = true);
     try {
@@ -931,32 +1035,65 @@ class _MerchantSalonScreenState extends State<MerchantSalonScreen> {
     }
   }
 
-  Future<void> _uploadServiceImage(int index) async {
-    final pickedImage = await _pickImageOrShowError();
-    if (pickedImage == null || !mounted) return;
-    final croppedImage = await _cropPickedImage(
-      pickedImage,
-      title: '裁剪服务套餐图片（1:1）',
-      aspectRatio: 1,
+  Future<void> _uploadServiceImages(Map<String, dynamic> service) async {
+    if (_serviceUploads.containsKey(service)) return;
+    final remaining = 20 - serviceImageUrls(service).length;
+    if (remaining <= 0) return;
+    final picked = await _pickImagesOrShowError(limit: remaining);
+    if (!mounted || picked.isEmpty || !_services.contains(service)) return;
+    final croppedImages = await cropPickedImageBatch(
+      picked,
+      (image, index, total) => _cropPickedImage(
+        image,
+        title: '裁剪服务效果图 ${index + 1}/$total（4:5）',
+        aspectRatio: 4 / 5,
+        showCloseButton: true,
+      ),
     );
-    if (croppedImage == null || !mounted) return;
-    final upload = _croppedUploadData(croppedImage, 'service');
-
-    setState(() => _uploadingServiceIndex = index);
+    if (croppedImages == null ||
+        croppedImages.isEmpty ||
+        !mounted ||
+        !_services.contains(service)) {
+      return;
+    }
+    if (_serviceUploads.containsKey(service) || _isSaving) return;
+    final token = CancelToken();
+    setState(() => _serviceUploads[service] = token);
     try {
-      final url = await _repository.uploadImage(
-        fileName: upload.fileName,
-        base64Data: upload.base64Data,
-      );
-      if (!mounted) return;
-      setState(() => _services[index]['imageUrl'] = url);
+      for (var i = 0; i < croppedImages.length; i++) {
+        if (token.isCancelled || !_services.contains(service)) return;
+        final upload = _croppedUploadData(croppedImages[i], 'service-${i + 1}');
+        final url = await _repository.uploadImage(
+          fileName: upload.fileName,
+          base64Data: upload.base64Data,
+          cancelToken: token,
+        );
+        if (!mounted || token.isCancelled || !_services.contains(service)) {
+          return;
+        }
+        setState(
+          () => setServiceImages(
+            service,
+            {...serviceImageUrls(service), url}.toList(),
+          ),
+        );
+      }
       _showTopMessage('服务效果图已上传，请保存店铺信息');
     } catch (e) {
-      if (!mounted) return;
-      _showTopMessage(userFacingApiError(e, fallback: '服务效果图上传失败，请稍后重试'));
+      if (mounted && !token.isCancelled) {
+        _showTopMessage(
+          userFacingApiError(e, fallback: '服务效果图上传失败，已上传的图片已保留，请重试'),
+        );
+      }
     } finally {
-      if (mounted) setState(() => _uploadingServiceIndex = null);
+      if (mounted && identical(_serviceUploads[service], token)) {
+        setState(() => _serviceUploads.remove(service));
+      }
     }
+  }
+
+  void _cancelServiceUpload(Map<String, dynamic> service) {
+    setState(() => _serviceUploads.remove(service)?.cancel());
   }
 
   @override
@@ -977,7 +1114,9 @@ class _MerchantSalonScreenState extends State<MerchantSalonScreen> {
         actions: [
           IconButton(
             tooltip: '重新加载',
-            onPressed: _isLoading || _isSaving ? null : _loadSalon,
+            onPressed: _isLoading || _isSaving || _serviceUploads.isNotEmpty
+                ? null
+                : _loadSalon,
             icon: const Icon(Icons.refresh),
           ),
           _buildNotificationButton(),
@@ -1135,7 +1274,9 @@ class _MerchantSalonScreenState extends State<MerchantSalonScreen> {
               child: SizedBox(
                 height: 48,
                 child: ElevatedButton.icon(
-                  onPressed: _isSaving ? null : _saveSalon,
+                  onPressed: _isSaving || _serviceUploads.isNotEmpty
+                      ? null
+                      : _saveSalon,
                   icon: _isSaving
                       ? const SizedBox(
                           width: 18,
@@ -1157,14 +1298,20 @@ class _MerchantSalonScreenState extends State<MerchantSalonScreen> {
   }
 
   Widget _buildTabPage(Widget child) {
-    return ListView(
-      padding: const EdgeInsets.symmetric(vertical: 20),
-      children: [
-        PageWidth(child: _buildContentReviewNotice()),
-        const SizedBox(height: 12),
-        PageWidth(child: child),
-        const SizedBox(height: 16),
-      ],
+    return _KeepAliveTabPage(
+      child: GestureDetector(
+        behavior: HitTestBehavior.translucent,
+        onTap: () => FocusManager.instance.primaryFocus?.unfocus(),
+        child: ListView(
+          padding: const EdgeInsets.symmetric(vertical: 20),
+          children: [
+            PageWidth(child: _buildContentReviewNotice()),
+            const SizedBox(height: 12),
+            PageWidth(child: child),
+            const SizedBox(height: 16),
+          ],
+        ),
+      ),
     );
   }
 
@@ -1189,7 +1336,17 @@ class _MerchantSalonScreenState extends State<MerchantSalonScreen> {
       ),
     };
 
+    return _buildNotice(icon: icon, color: color, text: text);
+  }
+
+  Widget _buildNotice({
+    Key? key,
+    required IconData icon,
+    required Color color,
+    required String text,
+  }) {
     return Container(
+      key: key,
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
         color: color.withValues(alpha: 0.08),
@@ -1643,6 +1800,31 @@ class _MerchantSalonScreenState extends State<MerchantSalonScreen> {
                   ? service['name'].toString()
                   : '新套餐',
               headerActions: [
+                Tooltip(
+                  message: '审核通过后展示在小程序分类推广页',
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(switch (service['promotionReviewStatus']) {
+                        'pending' => '推广·审核中',
+                        'rejected' => '推广·已驳回',
+                        _ => '推广',
+                      }),
+                      Transform.scale(
+                        scale: 0.8,
+                        child: Switch(
+                          value: service['promotionEnabled'] == true,
+                          activeThumbColor: AppTheme.primaryPink,
+                          materialTapTargetSize:
+                              MaterialTapTargetSize.shrinkWrap,
+                          onChanged: (value) => setState(
+                            () => service['promotionEnabled'] = value,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
                 IconButton(
                   tooltip: '上移',
                   onPressed: index == 0
@@ -1658,31 +1840,35 @@ class _MerchantSalonScreenState extends State<MerchantSalonScreen> {
                   icon: const Icon(Icons.arrow_downward),
                 ),
               ],
-              onDelete: () => setState(() => _services.removeAt(index)),
-              children: [_buildServiceSummaryRow(index, service)],
+              onDelete: () {
+                _cancelServiceUpload(service);
+                setState(() => _services.removeAt(index));
+              },
+              children: [_buildServiceSummaryRow(service)],
             );
           }),
       ],
     );
   }
 
-  Widget _buildServiceSummaryRow(int index, Map<String, dynamic> service) {
+  Widget _buildServiceSummaryRow(Map<String, dynamic> service) {
     return LayoutBuilder(
       builder: (context, constraints) {
         final isNarrow = constraints.maxWidth < 600;
-        final imageWidth = constraints.maxWidth * 0.25;
 
         final image = SizedBox(
-          width: isNarrow ? double.infinity : imageWidth,
-          child: _buildImageUploader(
-            imageUrl: service['imageUrl']?.toString() ?? '',
+          width: double.infinity,
+          child: _buildMultipleImagesUploader(
+            images: serviceImageUrls(service),
             title: '服务效果图',
-            emptyText: '尚未上传效果图',
-            uploadedText: '已上传效果图',
-            isUploading: _uploadingServiceIndex == index,
-            onUpload: () => _uploadServiceImage(index),
-            aspectRatio: 1,
-            compactUploadButton: true,
+            aspectRatio: 4 / 5,
+            aspectRatioLabel: '4:5',
+            isUploading: _serviceUploads.containsKey(service),
+            onCancel: () => _cancelServiceUpload(service),
+            onUpload: !_isSaving && !_serviceUploads.containsKey(service)
+                ? () => _uploadServiceImages(service)
+                : null,
+            onChanged: (images) => setServiceImages(service, images),
           ),
         );
         final priceAndDuration = isNarrow
@@ -1721,16 +1907,7 @@ class _MerchantSalonScreenState extends State<MerchantSalonScreen> {
 
         return Padding(
           padding: const EdgeInsets.only(bottom: 12),
-          child: isNarrow
-              ? Column(children: [image, fields])
-              : Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    image,
-                    const SizedBox(width: 12),
-                    Expanded(child: fields),
-                  ],
-                ),
+          child: Column(children: [image, fields]),
         );
       },
     );
@@ -1828,8 +2005,8 @@ class _MerchantSalonScreenState extends State<MerchantSalonScreen> {
     return LayoutBuilder(
       builder: (context, constraints) {
         final isNarrow = constraints.maxWidth < 600;
-        final imageWidth = constraints.maxWidth * 0.25;
 
+        final imageWidth = constraints.maxWidth * 0.25;
         final avatar = SizedBox(
           width: isNarrow ? double.infinity : imageWidth,
           height: isNarrow ? 280 : 322,
@@ -2237,7 +2414,7 @@ class _MerchantSalonScreenState extends State<MerchantSalonScreen> {
   }
 
   Widget _buildServiceTags(Map<String, dynamic> service) {
-    final selected = Set<String>.from(service['tags'] as List? ?? const []);
+    final selected = Set<String>.from(service['tagIds'] as List? ?? const []);
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
       child: Align(
@@ -2245,15 +2422,15 @@ class _MerchantSalonScreenState extends State<MerchantSalonScreen> {
         child: Wrap(
           spacing: 8,
           runSpacing: 4,
-          children: _serviceTagOptions.map((tag) {
+          children: serviceTagOptions.map((tag) {
             return FilterChip(
-              label: Text(tag),
-              selected: selected.contains(tag),
-              onSelected: !selected.contains(tag) && selected.length >= 3
+              label: Text(tag.label),
+              selected: selected.contains(tag.id),
+              onSelected: !selected.contains(tag.id) && selected.length >= 3
                   ? null
                   : (checked) => setState(() {
-                      checked ? selected.add(tag) : selected.remove(tag);
-                      service['tags'] = selected.toList();
+                      checked ? selected.add(tag.id) : selected.remove(tag.id);
+                      service['tagIds'] = selected.toList();
                     }),
             );
           }).toList(),
@@ -2423,8 +2600,27 @@ class _MerchantSalonScreenState extends State<MerchantSalonScreen> {
   }
 
   Widget _buildPromoImagesUploader() {
-    final images = _promoImages();
+    return _buildMultipleImagesUploader(
+      images: _promoImages(),
+      title: '轮播图',
+      aspectRatio: 1.2,
+      aspectRatioLabel: '1.2:1',
+      isUploading: _isUploadingCover,
+      onUpload: _uploadPromoImages,
+      onChanged: _setPromoImages,
+    );
+  }
 
+  Widget _buildMultipleImagesUploader({
+    required List<String> images,
+    required String title,
+    required double aspectRatio,
+    required String aspectRatioLabel,
+    required bool isUploading,
+    required VoidCallback? onUpload,
+    required ValueChanged<List<String>> onChanged,
+    VoidCallback? onCancel,
+  }) {
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
       padding: const EdgeInsets.all(12),
@@ -2442,8 +2638,8 @@ class _MerchantSalonScreenState extends State<MerchantSalonScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text(
-                      '轮播图',
+                    Text(
+                      title,
                       style: TextStyle(
                         color: AppTheme.textDark,
                         fontWeight: FontWeight.bold,
@@ -2452,8 +2648,8 @@ class _MerchantSalonScreenState extends State<MerchantSalonScreen> {
                     const SizedBox(height: 4),
                     Text(
                       images.isEmpty
-                          ? '尚未上传轮播图，为了更好的展示效果请上传1.2:1的图片'
-                          : '已上传 ${images.length}/20 张轮播图，为了更好的展示效果请上传1.2:1的图片',
+                          ? '尚未上传$title，请上传$aspectRatioLabel的图片'
+                          : '已上传 ${images.length}/20 张$title',
                       style: TextStyle(color: Colors.grey[600], fontSize: 12),
                     ),
                     if (images.isNotEmpty)
@@ -2470,20 +2666,20 @@ class _MerchantSalonScreenState extends State<MerchantSalonScreen> {
               ),
               const SizedBox(width: 12),
               OutlinedButton.icon(
-                onPressed: _isUploadingCover || images.length >= 20
-                    ? null
-                    : _uploadPromoImages,
-                icon: _isUploadingCover
+                onPressed: isUploading || images.length >= 20 ? null : onUpload,
+                icon: isUploading
                     ? const SizedBox(
                         width: 16,
                         height: 16,
                         child: CircularProgressIndicator(strokeWidth: 2),
                       )
                     : const Icon(Icons.upload),
-                label: Text(_isUploadingCover ? '上传中' : '上传并裁剪'),
+                label: Text(isUploading ? '上传中' : '上传并裁剪'),
               ),
             ],
           ),
+          if (isUploading && onCancel != null)
+            TextButton(onPressed: onCancel, child: const Text('取消上传')),
           if (images.isNotEmpty) ...[
             const SizedBox(height: 12),
             SizedBox(
@@ -2497,7 +2693,7 @@ class _MerchantSalonScreenState extends State<MerchantSalonScreen> {
                     final nextImages = [...images];
                     final image = nextImages.removeAt(oldIndex);
                     nextImages.insert(newIndex, image);
-                    _setPromoImages(nextImages);
+                    onChanged(nextImages);
                   });
                 },
                 itemBuilder: (context, index) {
@@ -2515,7 +2711,7 @@ class _MerchantSalonScreenState extends State<MerchantSalonScreen> {
                               ClipRRect(
                                 borderRadius: BorderRadius.circular(8),
                                 child: AspectRatio(
-                                  aspectRatio: 1.2,
+                                  aspectRatio: aspectRatio,
                                   child: Image.network(
                                     imageUrl,
                                     fit: BoxFit.cover,
@@ -2539,7 +2735,7 @@ class _MerchantSalonScreenState extends State<MerchantSalonScreen> {
                                     setState(() {
                                       final nextImages = [...images]
                                         ..removeAt(index);
-                                      _setPromoImages(nextImages);
+                                      onChanged(nextImages);
                                     });
                                   },
                                   borderRadius: BorderRadius.circular(999),
@@ -2586,7 +2782,7 @@ class _MerchantSalonScreenState extends State<MerchantSalonScreen> {
                           ),
                           const SizedBox(height: 5),
                           Text(
-                            '轮播图 ${index + 1}',
+                            '$title ${index + 1}',
                             style: TextStyle(
                               color: Colors.grey[600],
                               fontSize: 11,
@@ -2821,16 +3017,39 @@ class _MerchantSalonScreenState extends State<MerchantSalonScreen> {
   }
 }
 
+class _KeepAliveTabPage extends StatefulWidget {
+  const _KeepAliveTabPage({required this.child});
+
+  final Widget child;
+
+  @override
+  State<_KeepAliveTabPage> createState() => _KeepAliveTabPageState();
+}
+
+class _KeepAliveTabPageState extends State<_KeepAliveTabPage>
+    with AutomaticKeepAliveClientMixin {
+  @override
+  bool get wantKeepAlive => true;
+
+  @override
+  Widget build(BuildContext context) {
+    super.build(context);
+    return widget.child;
+  }
+}
+
 class _ImageCropDialog extends StatefulWidget {
   const _ImageCropDialog({
     required this.image,
     required this.title,
     required this.aspectRatio,
+    required this.showCloseButton,
   });
 
   final Uint8List image;
   final String title;
   final double aspectRatio;
+  final bool showCloseButton;
 
   @override
   State<_ImageCropDialog> createState() => _ImageCropDialogState();
@@ -2844,7 +3063,20 @@ class _ImageCropDialogState extends State<_ImageCropDialog> {
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
-      title: Text(widget.title),
+      title: Row(
+        children: [
+          Expanded(child: Text(widget.title)),
+          if (widget.showCloseButton)
+            IconButton(
+              tooltip: '关闭整批裁剪',
+              onPressed: _cropping
+                  ? null
+                  : () =>
+                        Navigator.pop(context, (image: null, closeBatch: true)),
+              icon: const Icon(Icons.close),
+            ),
+        ],
+      ),
       content: SizedBox(
         width: 700,
         height: MediaQuery.sizeOf(context).height * 0.55,
@@ -2872,7 +3104,10 @@ class _ImageCropDialogState extends State<_ImageCropDialog> {
                   if (!mounted) return;
                   switch (result) {
                     case CropSuccess(:final croppedImage):
-                      Navigator.pop(context, croppedImage);
+                      Navigator.pop(context, (
+                        image: croppedImage,
+                        closeBatch: false,
+                      ));
                     case CropFailure(:final cause):
                       setState(() {
                         _cropping = false;
@@ -2891,7 +3126,9 @@ class _ImageCropDialogState extends State<_ImageCropDialog> {
       ),
       actions: [
         TextButton(
-          onPressed: _cropping ? null : () => Navigator.pop(context),
+          onPressed: _cropping
+              ? null
+              : () => Navigator.pop(context, (image: null, closeBatch: false)),
           child: const Text('取消'),
         ),
         FilledButton(

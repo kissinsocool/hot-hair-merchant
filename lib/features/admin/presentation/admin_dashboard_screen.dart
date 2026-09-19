@@ -69,6 +69,49 @@ int? pendingOrderOverdueHours(BookingOrder order, [DateTime? now]) {
 bool isAuditedReviewStatus(dynamic status) =>
     status == 'approved' || status == 'rejected';
 
+List<Map<String, dynamic>> sortMerchantsByContentSubmission(
+  Iterable<Map<String, dynamic>> merchants,
+) {
+  DateTime? submittedAt(Map<String, dynamic> merchant) {
+    return DateTime.tryParse(merchant['contentSubmittedAt']?.toString() ?? '');
+  }
+
+  final sorted = merchants.toList();
+  sorted.sort((a, b) {
+    final aTime = submittedAt(a);
+    final bTime = submittedAt(b);
+    if (aTime == null) return bTime == null ? 0 : 1;
+    if (bTime == null) return -1;
+    return bTime.compareTo(aTime);
+  });
+  return sorted;
+}
+
+String merchantContentSubmissionText(Map<String, dynamic> merchant) {
+  final time = _itemTime(merchant['contentSubmittedAt']);
+  return time == '-' ? '最后一次内容提交时间：暂无记录' : '最后一次内容提交时间：$time';
+}
+
+List<Map<String, dynamic>> servicePromotionRows(
+  Iterable<Map<String, dynamic>> merchants,
+) => [
+  for (final merchant in merchants)
+    for (final service
+        in ((merchant['salon'] as Map?)?['services'] as List?) ?? const [])
+      if (service is Map &&
+          const {
+            'pending',
+            'approved',
+            'rejected',
+          }.contains(service['promotionReviewStatus']))
+        {
+          ...Map<String, dynamic>.from(service),
+          'merchantId': merchant['id'],
+          'salonName':
+              (merchant['salon'] as Map?)?['name'] ?? merchant['salonName'],
+        },
+];
+
 String avatarReviewStatusLabel(dynamic status) => switch (status) {
   'pending' => '待审核',
   'approved' => '已通过',
@@ -172,7 +215,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
   @override
   Widget build(BuildContext context) {
     return DefaultTabController(
-      length: 8,
+      length: 9,
       child: Scaffold(
         backgroundColor: AppTheme.bgCream,
         appBar: AppBar(
@@ -199,6 +242,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
               Tab(icon: Icon(Icons.storefront_outlined), text: '商家账号'),
               Tab(icon: Icon(Icons.people_outline), text: '客户端用户'),
               Tab(icon: Icon(Icons.rate_review_outlined), text: '评论管理'),
+              Tab(icon: Icon(Icons.auto_awesome_outlined), text: '套餐推广'),
               Tab(icon: Icon(Icons.report_outlined), text: '投诉管理'),
               Tab(icon: Icon(Icons.support_agent_outlined), text: '客服消息'),
               Tab(icon: Icon(Icons.campaign_outlined), text: '广告位'),
@@ -217,6 +261,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                     merchants: _merchants,
                     onCreate: _showCreateMerchantDialog,
                     onEdit: _showEditMerchantDialog,
+                    onDelete: _deleteMerchant,
                     onReviewLicense: _reviewMerchantLicense,
                     onReviewContent: _reviewMerchantContent,
                     onTogglePublish: _toggleMerchantPublishStatus,
@@ -226,6 +271,10 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                   ),
                   _UsersTab(users: _users, onReviewAvatar: _reviewUserAvatar),
                   _ReviewsTab(items: _userImages, onAction: _manageReview),
+                  _ServicePromotionsTab(
+                    merchants: _merchants,
+                    onAction: _reviewServicePromotion,
+                  ),
                   _ComplaintsTab(items: _userImages, users: _users),
                   _SupportMessagesTab(
                     messages: _supportMessages,
@@ -431,6 +480,43 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
     await _showMerchantDialog(merchant: merchant);
   }
 
+  Future<void> _deleteMerchant(Map<String, dynamic> merchant) async {
+    final username = merchant['username']?.toString() ?? '';
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('删除商家账号'),
+        content: Text('确定删除账号“$username”吗？店铺资料不会删除，此操作不可恢复。'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: FilledButton.styleFrom(backgroundColor: Colors.red),
+            child: const Text('删除'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+
+    try {
+      await _repository.deleteMerchant(merchant['id'].toString());
+      await _load();
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('商家账号已删除')));
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(_saveError(error))));
+    }
+  }
+
   Future<void> _reviewMerchantLicense(
     Map<String, dynamic> merchant,
     bool approve,
@@ -520,6 +606,28 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
     }
   }
 
+  Future<void> _reviewServicePromotion(
+    Map<String, dynamic> service,
+    bool approve,
+  ) async {
+    final reason = approve ? '' : await _rejectReason('驳回套餐推广');
+    if (!approve && reason.isEmpty) return;
+    try {
+      await _repository.reviewServicePromotion(
+        merchantId: service['merchantId'].toString(),
+        serviceId: service['id'].toString(),
+        approve: approve,
+        reason: reason,
+      );
+      await _load();
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(_saveError(error))));
+    }
+  }
+
   Future<void> _reviewUserAvatar(
     Map<String, dynamic> user,
     bool approve,
@@ -579,16 +687,11 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
   }
 
   Future<void> _showLicenseDialog(Map<String, dynamic> merchant) async {
-    final documents = [
-      ('营业执照', merchant['licenseUrl']?.toString() ?? ''),
-      ('法人身份证人像面', merchant['legalPersonIdFrontUrl']?.toString() ?? ''),
-      ('法人身份证国徽面', merchant['legalPersonIdBackUrl']?.toString() ?? ''),
-      ('地址证明', merchant['addressProofUrl']?.toString() ?? ''),
-    ];
+    final documents = [('营业执照', merchant['licenseUrl']?.toString() ?? '')];
     if (documents.every((document) => document.$2.isEmpty)) {
       ScaffoldMessenger.of(
         context,
-      ).showSnackBar(const SnackBar(content: Text('商家尚未提交资质材料')));
+      ).showSnackBar(const SnackBar(content: Text('商家尚未提交营业执照')));
       return;
     }
 
@@ -631,7 +734,8 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
               salon['image'],
               ...((salon['promoImages'] as List?) ?? const []),
               for (final service in (salon['services'] as List?) ?? const [])
-                if (service is Map) service['imageUrl'],
+                if (service is Map)
+                  ...((service['imageUrls'] as List?) ?? [service['imageUrl']]),
               for (final staff in (salon['staff'] as List?) ?? const [])
                 if (staff is Map) staff['imageUrl'],
             ]
@@ -1024,6 +1128,7 @@ class _MerchantsTab extends StatelessWidget {
     required this.merchants,
     required this.onCreate,
     required this.onEdit,
+    required this.onDelete,
     required this.onReviewLicense,
     required this.onReviewContent,
     required this.onTogglePublish,
@@ -1035,6 +1140,7 @@ class _MerchantsTab extends StatelessWidget {
   final List<Map<String, dynamic>> merchants;
   final VoidCallback onCreate;
   final ValueChanged<Map<String, dynamic>> onEdit;
+  final ValueChanged<Map<String, dynamic>> onDelete;
   final void Function(Map<String, dynamic> merchant, bool approve)
   onReviewLicense;
   final void Function(Map<String, dynamic> merchant, bool approve)
@@ -1050,7 +1156,9 @@ class _MerchantsTab extends StatelessWidget {
         merchant['licenseStatus'] == 'approved' &&
         merchant['contentReviewStatus'] == 'approved';
 
-    final pending = merchants.where((merchant) => !approved(merchant)).toList();
+    final pending = sortMerchantsByContentSubmission(
+      merchants.where((merchant) => !approved(merchant)),
+    );
     final online = merchants
         .where(
           (merchant) =>
@@ -1126,6 +1234,7 @@ class _MerchantsTab extends StatelessWidget {
         .map((tag) => tag.toString())
         .where((tag) => tag.isNotEmpty)
         .join('、');
+    final contentSubmissionText = merchantContentSubmissionText(merchant);
 
     return Container(
       margin: const EdgeInsets.only(bottom: 10),
@@ -1186,6 +1295,16 @@ class _MerchantsTab extends StatelessWidget {
                       '保证金：${_merchantDeposit(merchant)}',
                       style: TextStyle(color: Colors.grey[700]),
                     ),
+                    if (contentSubmissionText.isNotEmpty) ...[
+                      const SizedBox(height: 4),
+                      Text(
+                        contentSubmissionText,
+                        style: const TextStyle(
+                          color: AppTheme.primaryPink,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
                   ],
                 ),
               ),
@@ -1276,6 +1395,12 @@ class _MerchantsTab extends StatelessWidget {
                 label: Text(
                   merchant['publishStatus'] == 'online' ? '下架' : '上架',
                 ),
+              ),
+              OutlinedButton.icon(
+                onPressed: () => onDelete(merchant),
+                style: OutlinedButton.styleFrom(foregroundColor: Colors.red),
+                icon: const Icon(Icons.delete_outline),
+                label: const Text('删除账号'),
               ),
             ],
           ),
@@ -1903,6 +2028,140 @@ class _CouponCampaignTabState extends State<_CouponCampaignTab> {
         ],
       ),
     );
+  }
+}
+
+class _ServicePromotionsTab extends StatelessWidget {
+  const _ServicePromotionsTab({
+    required this.merchants,
+    required this.onAction,
+  });
+
+  final List<Map<String, dynamic>> merchants;
+  final void Function(Map<String, dynamic> service, bool approve) onAction;
+
+  @override
+  Widget build(BuildContext context) {
+    final rows = servicePromotionRows(merchants);
+    final pending = rows
+        .where((item) => item['promotionReviewStatus'] == 'pending')
+        .toList();
+    final approved = rows
+        .where((item) => item['promotionReviewStatus'] == 'approved')
+        .toList();
+    final rejected = rows
+        .where((item) => item['promotionReviewStatus'] == 'rejected')
+        .toList();
+    return DefaultTabController(
+      length: 3,
+      child: Column(
+        children: [
+          const Material(
+            color: AppTheme.white,
+            child: TabBar(
+              labelColor: AppTheme.primaryPink,
+              unselectedLabelColor: AppTheme.textDark,
+              indicatorColor: AppTheme.primaryPink,
+              tabs: [
+                Tab(text: '待审核'),
+                Tab(text: '已审核'),
+                Tab(text: '已驳回'),
+              ],
+            ),
+          ),
+          Expanded(
+            child: TabBarView(
+              children: [
+                _buildTable(pending, '暂无待审核套餐推广'),
+                _buildTable(approved, '暂无已审核套餐推广'),
+                _buildTable(rejected, '暂无已驳回套餐推广'),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildTable(List<Map<String, dynamic>> rows, String emptyText) {
+    if (rows.isEmpty) return Center(child: Text(emptyText));
+    return ListView(
+      padding: const EdgeInsets.all(20),
+      children: [
+        Container(
+          decoration: _panelDecoration(),
+          child: SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: DataTable(
+              dataRowMinHeight: 76,
+              dataRowMaxHeight: 130,
+              columns: const [
+                DataColumn(label: Text('店铺')),
+                DataColumn(label: Text('套餐名称')),
+                DataColumn(label: Text('标签')),
+                DataColumn(label: Text('价格')),
+                DataColumn(label: Text('图片')),
+                DataColumn(label: Text('审核时间')),
+                DataColumn(label: Text('状态')),
+                DataColumn(label: Text('操作')),
+              ],
+              rows: [
+                for (final item in rows)
+                  DataRow(
+                    cells: [
+                      DataCell(Text(item['salonName']?.toString() ?? '-')),
+                      DataCell(Text(item['name']?.toString() ?? '-')),
+                      DataCell(
+                        SizedBox(
+                          width: 180,
+                          child: Text(
+                            ((item['tags'] as List?) ?? const []).join('、'),
+                          ),
+                        ),
+                      ),
+                      DataCell(Text(_servicePrice(item['priceFen']))),
+                      DataCell(_ImageThumbnails(item: item)),
+                      DataCell(Text(_itemTime(item['promotionReviewedAt']))),
+                      DataCell(
+                        _ReviewStatus(
+                          status: item['promotionReviewStatus']?.toString(),
+                        ),
+                      ),
+                      DataCell(
+                        Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            if (item['promotionReviewStatus'] != 'approved')
+                              FilledButton(
+                                onPressed: () => onAction(item, true),
+                                child: const Text('审核通过'),
+                              ),
+                            if (item['promotionReviewStatus'] !=
+                                'rejected') ...[
+                              const SizedBox(width: 8),
+                              OutlinedButton(
+                                onPressed: () => onAction(item, false),
+                                child: const Text('驳回'),
+                              ),
+                            ],
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  String _servicePrice(dynamic value) {
+    final fen = value is num ? value : num.tryParse(value?.toString() ?? '');
+    if (fen == null) return '-';
+    final yuan = fen / 100;
+    return '¥${yuan == yuan.roundToDouble() ? yuan.toInt() : yuan.toStringAsFixed(2)}';
   }
 }
 

@@ -19,38 +19,11 @@ class MerchantAccountRepository {
     String licenseUrl = '',
     String fileName = '',
     String base64Data = '',
-    String legalPersonIdFrontUrl = '',
-    String legalPersonIdFrontFileName = '',
-    String legalPersonIdFrontData = '',
-    String legalPersonIdBackUrl = '',
-    String legalPersonIdBackFileName = '',
-    String legalPersonIdBackData = '',
-    String addressProofUrl = '',
-    String addressProofFileName = '',
-    String addressProofData = '',
   }) async {
     final pendingImages =
         <({String field, String fileName, String base64Data})>[
           if (base64Data.isNotEmpty)
             (field: 'licenseUrl', fileName: fileName, base64Data: base64Data),
-          if (legalPersonIdFrontData.isNotEmpty)
-            (
-              field: 'legalPersonIdFrontUrl',
-              fileName: legalPersonIdFrontFileName,
-              base64Data: legalPersonIdFrontData,
-            ),
-          if (legalPersonIdBackData.isNotEmpty)
-            (
-              field: 'legalPersonIdBackUrl',
-              fileName: legalPersonIdBackFileName,
-              base64Data: legalPersonIdBackData,
-            ),
-          if (addressProofData.isNotEmpty)
-            (
-              field: 'addressProofUrl',
-              fileName: addressProofFileName,
-              base64Data: addressProofData,
-            ),
         ];
     final directObjects = pendingImages.isEmpty
         ? const <Map<String, dynamic>>[]
@@ -72,15 +45,7 @@ class MerchantAccountRepository {
     final response = await _apiClient.request(
       '/merchant/qualification',
       method: 'PATCH',
-      data: {
-        'licenseUrl': uploadedByField['licenseUrl'] ?? licenseUrl,
-        'legalPersonIdFrontUrl':
-            uploadedByField['legalPersonIdFrontUrl'] ?? legalPersonIdFrontUrl,
-        'legalPersonIdBackUrl':
-            uploadedByField['legalPersonIdBackUrl'] ?? legalPersonIdBackUrl,
-        'addressProofUrl':
-            uploadedByField['addressProofUrl'] ?? addressProofUrl,
-      },
+      data: {'licenseUrl': uploadedByField['licenseUrl'] ?? licenseUrl},
     );
     return Map<String, dynamic>.from(response.data as Map);
   }
