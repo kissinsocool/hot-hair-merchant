@@ -79,6 +79,22 @@ test('does not cancel a touch that ended normally', () => {
   assert.equal(cancellations, 0);
 });
 
+test('leaves native selection fields entirely to the browser', () => {
+  const {flutterView, window} = createRuntime();
+  let cancellations = 0;
+  flutterView.addEventListener('pointercancel', () => cancellations++);
+
+  window.dispatchEvent({
+    type: 'pointerdown',
+    pointerType: 'touch',
+    pointerId: 10,
+    target: {closest: (selector) => selector === '[data-native-selection-field]'},
+  });
+  window.dispatchEvent({type: 'touchend', touches: []});
+
+  assert.equal(cancellations, 0);
+});
+
 test('does not install the workaround outside iOS WebKit', () => {
   const {flutterView, window} = createRuntime('Mozilla/5.0 (Macintosh; Intel Mac OS X) Chrome/140');
   let cancellations = 0;

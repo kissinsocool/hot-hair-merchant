@@ -9,6 +9,7 @@
 
   window.addEventListener('pointerdown', (event) => {
     if (event.pointerType !== 'touch') return;
+    if (event.target?.closest?.('[data-native-selection-field]')) return;
     downTouches.set(event.pointerId, {
       clientX: event.clientX ?? 0,
       clientY: event.clientY ?? 0,

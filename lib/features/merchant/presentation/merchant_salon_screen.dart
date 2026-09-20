@@ -9,6 +9,7 @@ import 'package:geolocator/geolocator.dart';
 
 import '../../../core/network/api_client.dart';
 import '../../../core/theme/app_theme.dart';
+import '../../../core/widgets/native_multiline_text_field.dart';
 import '../../../core/widgets/page_width.dart';
 import '../../booking/data/booking_update_stream.dart';
 import '../data/image_upload_picker.dart';
@@ -1388,24 +1389,18 @@ class _MerchantSalonScreenState extends State<MerchantSalonScreen> {
             FilteringTextInputFormatter.allow(RegExp(r'[0-9+()\- ]')),
           ],
         ),
-        _buildTextField(
-          '首页短介绍',
-          _salon['description'],
-          (value) {
-            _salon['description'] = value;
-          },
+        NativeMultilineTextField(
+          label: '首页短介绍',
+          value: _salon['description']?.toString() ?? '',
+          onChanged: (value) => _salon['description'] = value,
           minLines: 3,
-          maxLines: 5,
           maxLength: 30,
         ),
-        _buildTextField(
-          '详情页关于我们',
-          _salon['fullDescription'],
-          (value) {
-            _salon['fullDescription'] = value;
-          },
+        NativeMultilineTextField(
+          label: '详情页关于我们',
+          value: _salon['fullDescription']?.toString() ?? '',
+          onChanged: (value) => _salon['fullDescription'] = value,
           minLines: 5,
-          maxLines: 10,
           maxLength: 200,
         ),
         _buildCoverImagesUploader(),
