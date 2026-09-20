@@ -35,7 +35,7 @@ html.TextAreaElement createNativeMultilineTextArea({
         '-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif'
     ..style.setProperty('-webkit-user-select', 'text')
     ..style.setProperty('-webkit-touch-callout', 'default')
-    ..style.touchAction = 'auto';
+    ..style.touchAction = 'none';
 }
 
 class NativeMultilineTextField extends StatefulWidget {
@@ -61,12 +61,6 @@ class NativeMultilineTextField extends StatefulWidget {
 
 class _NativeMultilineTextFieldState extends State<NativeMultilineTextField> {
   static int _nextViewId = 0;
-  static const _pointerEvents = [
-    'pointerdown',
-    'pointermove',
-    'pointerup',
-    'pointercancel',
-  ];
 
   late final String _viewType = 'native-multiline-text-field-${_nextViewId++}';
   late final html.TextAreaElement _textarea;
@@ -99,9 +93,6 @@ class _NativeMultilineTextFieldState extends State<NativeMultilineTextField> {
           if (mounted) setState(() => _isFocused = false);
         }),
       );
-    for (final eventName in _pointerEvents) {
-      _textarea.addEventListener(eventName, _stopPointerPropagation);
-    }
     html.document.addEventListener('pointerdown', _blurOnOutsidePointer);
 
     ui_web.platformViewRegistry.registerViewFactory(
@@ -120,8 +111,6 @@ class _NativeMultilineTextFieldState extends State<NativeMultilineTextField> {
     }
   }
 
-  void _stopPointerPropagation(html.Event event) => event.stopPropagation();
-
   void _blurOnOutsidePointer(html.Event event) {
     if (html.document.activeElement == _textarea && event.target != _textarea) {
       _textarea.blur();
@@ -130,9 +119,6 @@ class _NativeMultilineTextFieldState extends State<NativeMultilineTextField> {
 
   @override
   void dispose() {
-    for (final eventName in _pointerEvents) {
-      _textarea.removeEventListener(eventName, _stopPointerPropagation);
-    }
     html.document.removeEventListener('pointerdown', _blurOnOutsidePointer);
     for (final subscription in _subscriptions) {
       unawaited(subscription.cancel());

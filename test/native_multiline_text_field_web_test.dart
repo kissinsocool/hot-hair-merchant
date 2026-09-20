@@ -21,6 +21,7 @@ void main() {
     textarea.onInput.listen((_) => changedValue = textarea.value ?? '');
 
     expect(textarea.dataset['nativeSelectionField'], '首页短介绍');
+    expect(textarea.style.touchAction, 'none');
     expect(textarea.value, '专业造型设计');
     expect(textarea.maxLength, 30);
 
