@@ -89,6 +89,7 @@ const serviceTagOptions = <({String id, String label})>[
   (id: 'curly', label: '卷发'),
   (id: 'nutrition', label: '营养'),
 ];
+const maxServiceTagCount = 4;
 
 const staffRoleOptions = <({String id, String label})>[
   (id: 'junior_barber', label: '初级理发师'),
@@ -442,8 +443,8 @@ class _MerchantSalonScreenState extends State<MerchantSalonScreen> {
       if (service['tagIds'] is! List || (service['tagIds'] as List).isEmpty) {
         return '请为第${i + 1}个套餐至少选择一个标签';
       }
-      if ((service['tagIds'] as List).length > 3) {
-        return '第${i + 1}个套餐最多选择3个标签';
+      if ((service['tagIds'] as List).length > maxServiceTagCount) {
+        return '第${i + 1}个套餐最多选择$maxServiceTagCount个标签';
       }
       if (serviceImageUrls(service).isEmpty) return '请上传第${i + 1}个套餐服务效果图';
       if (serviceImageUrls(service).length > 20) return '每个套餐最多上传20张效果图';
@@ -2453,7 +2454,9 @@ class _MerchantSalonScreenState extends State<MerchantSalonScreen> {
             return FilterChip(
               label: Text(tag.label),
               selected: selected.contains(tag.id),
-              onSelected: !selected.contains(tag.id) && selected.length >= 3
+              onSelected:
+                  !selected.contains(tag.id) &&
+                      selected.length >= maxServiceTagCount
                   ? null
                   : (checked) => setState(() {
                       checked ? selected.add(tag.id) : selected.remove(tag.id);

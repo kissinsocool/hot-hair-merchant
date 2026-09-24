@@ -418,6 +418,7 @@ void main() {
   });
 
   test('套餐标签使用稳定 ID 和前端展示文案', () {
+    expect(maxServiceTagCount, 4);
     expect(serviceTagOptions.map((tag) => tag.id), [
       'wash_cut_blow',
       'color',
