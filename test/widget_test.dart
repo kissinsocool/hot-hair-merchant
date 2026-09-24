@@ -450,7 +450,18 @@ void main() {
     expect(staffRoleOptions.map((role) => role.id).toSet().length, 12);
     expect(
       staffRoleOptions.map((role) => role.label),
-      containsAll(['主理人', '设计师', '资深设计师', '技术总监', '艺术总监', '技术店长']),
+      containsAll([
+        '主理人',
+        '设计师',
+        '资深设计师',
+        '技术总监',
+        '艺术总监',
+        '技术店长',
+      ]),
+    );
+    expect(
+      staffRoleOptions.map((role) => role.label),
+      isNot(containsAll(['资深发型师', '色彩专家'])),
     );
     final profile = <String, dynamic>{
       'roleId': 'senior_designer',
