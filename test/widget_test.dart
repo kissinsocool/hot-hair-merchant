@@ -37,7 +37,7 @@ class _SalonRepositoryWithExistingItems extends MerchantSalonRepository {
     'staff': [
       {
         'name': '已有理发师',
-        'role': '高级理发师',
+        'roleId': 'senior_barber',
         'experience': '5年',
         'extraServiceFeeFen': 1000,
         'imageUrl': '',
@@ -49,6 +49,8 @@ class _SalonRepositoryWithExistingItems extends MerchantSalonRepository {
 }
 
 class _SuccessfulSalonRepository extends MerchantSalonRepository {
+  Map<String, dynamic>? savedPayload;
+
   @override
   Future<Map<String, dynamic>> fetchSalon() async => {
     'name': '测试店铺',
@@ -72,7 +74,7 @@ class _SuccessfulSalonRepository extends MerchantSalonRepository {
     'staff': [
       {
         'name': '理发师',
-        'role': '高级理发师',
+        'roleId': 'senior_barber',
         'experience': '5年',
         'extraServiceFeeFen': 1000,
         'imageUrl': 'staff-image',
@@ -83,8 +85,10 @@ class _SuccessfulSalonRepository extends MerchantSalonRepository {
   };
 
   @override
-  Future<Map<String, dynamic>> saveSalon(Map<String, dynamic> payload) async =>
-      {...payload, 'contentReviewStatus': 'approved'};
+  Future<Map<String, dynamic>> saveSalon(Map<String, dynamic> payload) async {
+    savedPayload = payload;
+    return {...payload, 'contentReviewStatus': 'approved'};
+  }
 }
 
 class _LicenseOnlyAccountRepository extends MerchantAccountRepository {
@@ -200,10 +204,11 @@ void main() {
   });
 
   testWidgets('店铺表单提交成功使用指定绿色背景和文字', (tester) async {
+    final repository = _SuccessfulSalonRepository();
     await tester.pumpWidget(
       MaterialApp(
         home: MerchantSalonScreen(
-          repository: _SuccessfulSalonRepository(),
+          repository: repository,
           enableRealtime: false,
         ),
       ),
@@ -219,6 +224,9 @@ void main() {
     );
     final decoration = message.decoration! as BoxDecoration;
     expect(decoration.color, const Color(0xffc5e9cb));
+    final savedStaff = (repository.savedPayload?['staff'] as List).single;
+    expect(savedStaff, containsPair('roleId', 'senior_barber'));
+    expect(savedStaff, isNot(contains('role')));
     expect(
       tester
           .widget<Text>(
@@ -436,6 +444,20 @@ void main() {
       '卷发',
       '营养',
     ]);
+  });
+
+  test('理发师职级使用稳定 ID 且不保留展示文案', () {
+    expect(staffRoleOptions.map((role) => role.id).toSet().length, 12);
+    expect(
+      staffRoleOptions.map((role) => role.label),
+      containsAll(['主理人', '设计师', '资深设计师', '技术总监', '艺术总监', '技术店长']),
+    );
+    final profile = <String, dynamic>{
+      'roleId': 'senior_designer',
+      'role': '资深设计师',
+    };
+    normalizeStaffRole(profile);
+    expect(profile, {'roleId': 'senior_designer'});
   });
 
   test('service gallery supports legacy covers, ordering and clearing', () {
@@ -659,14 +681,13 @@ void main() {
     await tester.tap(find.byTooltip('添加理发师'));
     await tester.pump();
 
+    final roleFields = find.byWidgetPredicate(
+      (widget) =>
+          widget is DropdownButtonFormField<String> &&
+          widget.decoration.labelText == '职位',
+    );
     final roles = tester
-        .widgetList<DropdownButtonFormField<String>>(
-          find.byWidgetPredicate(
-            (widget) =>
-                widget is DropdownButtonFormField<String> &&
-                widget.decoration.labelText == '职位',
-          ),
-        )
+        .widgetList<DropdownButtonFormField<String>>(roleFields)
         .map((field) => field.initialValue);
     final experienceYears = tester
         .widgetList<DropdownButtonFormField<int>>(
@@ -677,7 +698,7 @@ void main() {
           ),
         )
         .map((field) => field.initialValue);
-    expect(roles, containsAll(<String?>[null, '高级理发师']));
+    expect(roles, containsAll(<String?>[null, 'senior_barber']));
     expect(experienceYears, containsAll(<int?>[null, 5]));
   });
 
@@ -753,8 +774,8 @@ void main() {
     expect(find.text('休息日'), findsNothing);
     expect(find.textContaining('一个月内'), findsOneWidget);
 
-    final monday = find.byKey(const ValueKey('weekly-closed-day-1'));
-    final wednesday = find.byKey(const ValueKey('weekly-closed-day-3'));
+    final monday = find.byKey(const ValueKey('salon-weekly-closed-day-1'));
+    final wednesday = find.byKey(const ValueKey('salon-weekly-closed-day-3'));
     expect(tester.widget<ChoiceChip>(monday).selected, isFalse);
     expect(tester.widget<ChoiceChip>(monday).backgroundColor, Colors.grey[200]);
 
@@ -776,6 +797,35 @@ void main() {
     await tester.pump();
     expect(tester.widget<ChoiceChip>(monday).selected, isFalse);
     expect(tester.widget<ChoiceChip>(wednesday).selected, isTrue);
+  });
+
+  testWidgets('理发师缺勤设置下方可设置每周定休日', (tester) async {
+    final repository = _SuccessfulSalonRepository();
+    await tester.pumpWidget(
+      MaterialApp(
+        home: MerchantSalonScreen(
+          repository: repository,
+          enableRealtime: false,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('理发师').first);
+    await tester.pumpAndSettle();
+
+    final monday = find.byKey(const ValueKey('staff-0-weekly-closed-day-1'));
+    expect(find.text('可选择该理发师每周固定休息的日期'), findsOneWidget);
+    await tester.ensureVisible(monday);
+    await tester.pumpAndSettle();
+    await tester.tap(monday);
+    await tester.pump();
+    expect(tester.widget<ChoiceChip>(monday).selected, isTrue);
+
+    await tester.tap(find.text('保存并提交审核'));
+    await tester.pump();
+    await tester.pump();
+    final savedStaff = (repository.savedPayload?['staff'] as List).single;
+    expect(savedStaff['weeklyClosedDays'], [1]);
   });
 
   testWidgets('keeps the admin entry off the merchant login screen', (

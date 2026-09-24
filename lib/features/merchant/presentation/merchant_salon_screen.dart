@@ -90,6 +90,29 @@ const serviceTagOptions = <({String id, String label})>[
   (id: 'nutrition', label: '营养'),
 ];
 
+const staffRoleOptions = <({String id, String label})>[
+  (id: 'junior_barber', label: '初级理发师'),
+  (id: 'intermediate_barber', label: '中级理发师'),
+  (id: 'senior_barber', label: '高级理发师'),
+  (id: 'chief_stylist', label: '首席发型师'),
+  (id: 'creative_director', label: '创意总监'),
+  (id: 'store_manager', label: '店长'),
+  (id: 'principal', label: '主理人'),
+  (id: 'designer', label: '设计师'),
+  (id: 'senior_designer', label: '资深设计师'),
+  (id: 'technical_director', label: '技术总监'),
+  (id: 'art_director', label: '艺术总监'),
+  (id: 'technical_store_manager', label: '技术店长'),
+];
+
+void normalizeStaffRole(Map<String, dynamic> profile) {
+  final roleId = profile['roleId']?.toString() ?? '';
+  profile['roleId'] = staffRoleOptions.any((option) => option.id == roleId)
+      ? roleId
+      : '';
+  profile.remove('role');
+}
+
 void normalizeServiceTagIds(Map<String, dynamic> service) {
   service['tagIds'] =
       (service['tagIds'] as List?)?.whereType<String>().toSet().toList() ??
@@ -120,14 +143,6 @@ class _MerchantSalonScreenState extends State<MerchantSalonScreen> {
   late final MerchantSalonRepository _repository =
       widget.repository ?? MerchantSalonRepository();
 
-  static const List<String> _staffRoleOptions = [
-    '初级理发师',
-    '中级理发师',
-    '高级理发师',
-    '首席发型师',
-    '创意总监',
-    '店长',
-  ];
   static final List<int> _experienceYearOptions = List.generate(
     30,
     (index) => index + 1,
@@ -207,6 +222,7 @@ class _MerchantSalonScreenState extends State<MerchantSalonScreen> {
           );
         }
         for (final profile in _staff) {
+          normalizeStaffRole(profile);
           final feeFen = profile['extraServiceFeeFen'];
           setStaffExtraServiceFee(profile, feeFen is int ? feeFen ~/ 100 : 0);
         }
@@ -362,6 +378,9 @@ class _MerchantSalonScreenState extends State<MerchantSalonScreen> {
           normalizeServiceTagIds(service);
           normalizeServicePromotionRequest(service);
         }
+        for (final profile in _staff) {
+          normalizeStaffRole(profile);
+        }
       });
       _showTopMessage(
         _services.any(
@@ -457,7 +476,7 @@ class _MerchantSalonScreenState extends State<MerchantSalonScreen> {
       for (final item in [
         ('第${i + 1}个理发师头像', profile['imageUrl']),
         ('第${i + 1}个理发师姓名', profile['name']),
-        ('第${i + 1}个理发师职位', profile['role']),
+        ('第${i + 1}个理发师职位', profile['roleId']),
         ('第${i + 1}个理发师经验', profile['experience']),
         ('第${i + 1}个理发师个人简介', profile['bio']),
       ]) {
@@ -684,11 +703,12 @@ class _MerchantSalonScreenState extends State<MerchantSalonScreen> {
       _staff.insert(0, {
         'id': '',
         'name': '',
-        'role': '',
+        'roleId': '',
         'experience': '',
         'extraServiceFeeFen': 0,
         'imageUrl': '',
         'bio': '',
+        'weeklyClosedDays': <int>[],
         'unavailableSlots': <String>[],
       });
     });
@@ -1404,14 +1424,14 @@ class _MerchantSalonScreenState extends State<MerchantSalonScreen> {
           maxLength: 200,
         ),
         _buildCoverImagesUploader(),
-        _buildWeeklyClosedDaySection(),
+        _buildWeeklyClosedDaySection(_salon),
         _buildClosedDatesSection(),
       ],
     );
   }
 
-  List<int> _weeklyClosedDays() =>
-      ((_salon['weeklyClosedDays'] as List?) ?? const [])
+  List<int> _weeklyClosedDays(Map<String, dynamic> owner) =>
+      ((owner['weeklyClosedDays'] as List?) ?? const [])
           .whereType<num>()
           .map((day) => day.toInt())
           .where((day) => day >= 1 && day <= 7)
@@ -1419,9 +1439,13 @@ class _MerchantSalonScreenState extends State<MerchantSalonScreen> {
           .toList()
         ..sort();
 
-  Widget _buildWeeklyClosedDaySection() {
+  Widget _buildWeeklyClosedDaySection(
+    Map<String, dynamic> owner, {
+    String keyPrefix = 'salon',
+    String subtitle = '可选择每周固定休息的日期',
+  }) {
     const weekdayNames = ['周一', '周二', '周三', '周四', '周五', '周六', '周日'];
-    final selectedDays = _weeklyClosedDays().toSet();
+    final selectedDays = _weeklyClosedDays(owner).toSet();
     return Container(
       width: double.infinity,
       margin: const EdgeInsets.only(top: 12),
@@ -1434,25 +1458,28 @@ class _MerchantSalonScreenState extends State<MerchantSalonScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Row(
+          Row(
             children: [
-              Icon(Icons.event_repeat_outlined, color: AppTheme.primaryPink),
-              SizedBox(width: 8),
+              const Icon(
+                Icons.event_repeat_outlined,
+                color: AppTheme.primaryPink,
+              ),
+              const SizedBox(width: 8),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
+                    const Text(
                       '定休日',
                       style: TextStyle(
                         color: AppTheme.textDark,
                         fontWeight: FontWeight.bold,
                       ),
                     ),
-                    SizedBox(height: 4),
+                    const SizedBox(height: 4),
                     Text(
-                      '可选择每周固定休息的日期',
-                      style: TextStyle(color: Colors.grey, fontSize: 12),
+                      subtitle,
+                      style: const TextStyle(color: Colors.grey, fontSize: 12),
                     ),
                   ],
                 ),
@@ -1466,7 +1493,7 @@ class _MerchantSalonScreenState extends State<MerchantSalonScreen> {
             children: [
               for (var day = 1; day <= weekdayNames.length; day++)
                 ChoiceChip(
-                  key: ValueKey('weekly-closed-day-$day'),
+                  key: ValueKey('$keyPrefix-weekly-closed-day-$day'),
                   label: Text(weekdayNames[day - 1]),
                   selected: selectedDays.contains(day),
                   showCheckmark: false,
@@ -1483,7 +1510,7 @@ class _MerchantSalonScreenState extends State<MerchantSalonScreen> {
                     } else {
                       selectedDays.remove(day);
                     }
-                    _salon['weeklyClosedDays'] = selectedDays.toList()..sort();
+                    owner['weeklyClosedDays'] = selectedDays.toList()..sort();
                   }),
                 ),
             ],
@@ -1949,6 +1976,11 @@ class _MerchantSalonScreenState extends State<MerchantSalonScreen> {
               children: [
                 _buildStaffSummaryRow(index, profile),
                 _buildAbsenceScheduler(index, profile),
+                _buildWeeklyClosedDaySection(
+                  profile,
+                  keyPrefix: 'staff-$index',
+                  subtitle: '可选择该理发师每周固定休息的日期',
+                ),
               ],
             );
           }),
@@ -2515,19 +2547,24 @@ class _MerchantSalonScreenState extends State<MerchantSalonScreen> {
   }
 
   Widget _buildStaffRoleDropdown(Map<String, dynamic> profile) {
-    final currentRole = profile['role']?.toString() ?? '';
-    final value = _staffRoleOptions.contains(currentRole) ? currentRole : null;
+    final currentRoleId = profile['roleId']?.toString() ?? '';
+    final value = staffRoleOptions.any((option) => option.id == currentRoleId)
+        ? currentRoleId
+        : null;
 
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
       child: DropdownButtonFormField<String>(
         initialValue: value,
         isExpanded: true,
-        items: _staffRoleOptions
-            .map((role) => DropdownMenuItem(value: role, child: Text(role)))
+        items: staffRoleOptions
+            .map(
+              (role) =>
+                  DropdownMenuItem(value: role.id, child: Text(role.label)),
+            )
             .toList(),
-        onChanged: (role) {
-          if (role != null) setState(() => profile['role'] = role);
+        onChanged: (roleId) {
+          if (roleId != null) setState(() => profile['roleId'] = roleId);
         },
         decoration: _dropdownDecoration('职位'),
       ),
