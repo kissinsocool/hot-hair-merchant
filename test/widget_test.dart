@@ -91,6 +91,44 @@ class _SuccessfulSalonRepository extends MerchantSalonRepository {
   }
 }
 
+class _SalonPostRepository extends MerchantSalonRepository {
+  Map<String, dynamic>? createdPost;
+
+  @override
+  Future<Map<String, dynamic>> fetchSalon() async => {
+    'staff': [
+      {
+        'id': 'staff-1',
+        'name': '小林',
+        'roleId': 'senior_barber',
+        'experience': '5年',
+        'extraServiceFeeFen': 0,
+        'imageUrl': 'https://example.com/staff.jpg',
+        'bio': '擅长短发',
+      },
+    ],
+    'services': <Map<String, dynamic>>[],
+    'posts': <Map<String, dynamic>>[],
+  };
+
+  @override
+  Future<Map<String, dynamic>> createSalonPost({
+    required String authorStaffId,
+    required String content,
+    required List<String> imageUrls,
+  }) async {
+    createdPost = {
+      'id': 'post-1',
+      'authorStaffId': authorStaffId,
+      'authorName': '小林',
+      'content': content,
+      'imageUrls': imageUrls,
+      'createdAt': '2026-09-24T10:00:00Z',
+    };
+    return createdPost!;
+  }
+}
+
 class _LicenseOnlyAccountRepository extends MerchantAccountRepository {
   @override
   Future<Map<String, dynamic>> fetchQualification() async => {
@@ -101,6 +139,34 @@ class _LicenseOnlyAccountRepository extends MerchantAccountRepository {
 }
 
 void main() {
+  testWidgets('店铺动态可选择投稿理发师并发布文字', (tester) async {
+    final repository = _SalonPostRepository();
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: AppTheme.lightTheme,
+        home: MerchantSalonScreen(
+          repository: repository,
+          enableRealtime: false,
+          initialTabIndex: 3,
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+
+    await tester.enterText(
+      find.byKey(const ValueKey('salon-post-content')),
+      '今日短发作品',
+    );
+    await tester.tap(find.text('发布动态'));
+    await tester.pump();
+    await tester.pump(const Duration(seconds: 4));
+
+    expect(repository.createdPost, containsPair('authorStaffId', 'staff-1'));
+    expect(repository.createdPost, containsPair('content', '今日短发作品'));
+    expect(find.text('今日短发作品'), findsOneWidget);
+  });
+
   test('后台待审核商家只按最后内容提交时间倒序排列，未提交的排最后', () {
     final merchants = [
       {'id': 'unsubmitted', 'contentReviewStatus': 'pending'},
@@ -447,18 +513,18 @@ void main() {
     ]);
   });
 
+  test('售后政策使用稳定 ID 和固定展示文案', () {
+    expect(afterSalesPolicyOptions, [
+      (id: 'haircut_7_day_adjustment', label: '剪发七日内不满意免费重新调整'),
+      (id: 'color_perm_15_day_redo', label: '染烫十五日内不满意免费重做'),
+    ]);
+  });
+
   test('理发师职级使用稳定 ID 且不保留展示文案', () {
     expect(staffRoleOptions.map((role) => role.id).toSet().length, 12);
     expect(
       staffRoleOptions.map((role) => role.label),
-      containsAll([
-        '主理人',
-        '设计师',
-        '资深设计师',
-        '技术总监',
-        '艺术总监',
-        '技术店长',
-      ]),
+      containsAll(['主理人', '设计师', '资深设计师', '技术总监', '艺术总监', '技术店长']),
     );
     expect(
       staffRoleOptions.map((role) => role.label),
@@ -811,6 +877,43 @@ void main() {
     expect(tester.widget<ChoiceChip>(wednesday).selected, isTrue);
   });
 
+  testWidgets('店铺售后政策可多选并随资料保存', (tester) async {
+    final repository = _SuccessfulSalonRepository();
+    await tester.pumpWidget(
+      MaterialApp(
+        home: MerchantSalonScreen(
+          repository: repository,
+          enableRealtime: false,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final haircut = find.byKey(
+      const ValueKey('after-sales-policy-haircut_7_day_adjustment'),
+    );
+    final colorPerm = find.byKey(
+      const ValueKey('after-sales-policy-color_perm_15_day_redo'),
+    );
+    expect(find.text('售后政策'), findsOneWidget);
+    expect(tester.widget<CheckboxListTile>(haircut).value, isFalse);
+    expect(tester.widget<CheckboxListTile>(colorPerm).value, isFalse);
+
+    await tester.ensureVisible(haircut);
+    await tester.pumpAndSettle();
+    await tester.tap(haircut);
+    await tester.pump();
+    await tester.tap(colorPerm);
+    await tester.pump();
+    await tester.tap(find.text('保存并提交审核'));
+    await tester.pumpAndSettle();
+
+    expect(repository.savedPayload?['afterSalesPolicyIds'], [
+      'haircut_7_day_adjustment',
+      'color_perm_15_day_redo',
+    ]);
+  });
+
   testWidgets('理发师缺勤设置下方可设置每周定休日', (tester) async {
     final repository = _SuccessfulSalonRepository();
     await tester.pumpWidget(
@@ -988,9 +1091,17 @@ void main() {
   });
 
   test('groups canceled and rejected orders in the canceled tab', () {
-    final canceledStatuses = merchantOrderStatusTabs[3].$2;
+    final canceledStatuses = merchantOrderStatusTabs[2].$2;
 
-    expect(merchantOrderStatusTabs[3].$1, '已取消');
+    expect(merchantOrderStatusTabs.map((tab) => tab.$1), [
+      '新预约待接单',
+      '已接单',
+      '已取消',
+    ]);
+    expect(
+      merchantOrderStatusTabs[1].$2,
+      containsAll(['accepted', 'completed']),
+    );
     expect(canceledStatuses, containsAll(['canceled', 'rejected']));
     expect(canceledStatuses, isNot(contains('completed')));
   });
@@ -1011,6 +1122,101 @@ void main() {
     expect(isMerchantOrderVisible(oldPending, selectedDate, ''), isTrue);
     expect(isMerchantOrderVisible(oldCompleted, selectedDate, ''), isFalse);
     expect(isMerchantOrderVisible(oldCompleted, null, ''), isTrue);
+  });
+
+  test(
+    'month filtering includes the whole month and respects staff selection',
+    () {
+      final selectedDate = DateTime(2026, 12, 15);
+      for (final date in [
+        DateTime(2026, 12, 1),
+        DateTime(2026, 12, 31, 23, 59),
+      ]) {
+        final order = _bookingOrder(id: 'in-month', startTime: date);
+        expect(
+          isMerchantOrderVisible(order, selectedDate, '', byMonth: true),
+          isTrue,
+        );
+        expect(
+          isMerchantOrderVisible(order, selectedDate, 'S2', byMonth: true),
+          isFalse,
+        );
+        expect(isMerchantOrderVisible(order, selectedDate, ''), isFalse);
+      }
+      for (final date in [
+        DateTime(2026, 11, 30),
+        DateTime(2027, 1, 1),
+        DateTime(2025, 12, 15),
+      ]) {
+        final order = _bookingOrder(id: 'outside-month', startTime: date);
+        expect(
+          isMerchantOrderVisible(order, selectedDate, '', byMonth: true),
+          isFalse,
+        );
+        expect(isMerchantOrderVisible(order, null, '', byMonth: true), isTrue);
+      }
+      final pending = _bookingOrder(
+        id: 'pending',
+        startTime: DateTime(2027, 1, 1),
+        status: 'pending',
+      );
+      expect(
+        isMerchantOrderVisible(pending, selectedDate, '', byMonth: true),
+        isTrue,
+      );
+      expect(
+        isMerchantOrderVisible(pending, selectedDate, 'S2', byMonth: true),
+        isFalse,
+      );
+      final leapDay = _bookingOrder(
+        id: 'leap-day',
+        startTime: DateTime(2024, 2, 29),
+      );
+      expect(
+        isMerchantOrderVisible(leapDay, DateTime(2024, 2), '', byMonth: true),
+        isTrue,
+      );
+    },
+  );
+
+  testWidgets('订单页在窄屏可按月选择、清除筛选并切回按日', (tester) async {
+    tester.view.physicalSize = const Size(375, 900);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    await tester.pumpWidget(
+      const MaterialApp(home: MerchantOrdersScreen(enableRealtime: false)),
+    );
+    await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
+    await tester.tap(find.text('按月'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('选择月份'));
+    await tester.pumpAndSettle();
+    final now = DateTime.now();
+    final previous = DateTime(now.year, now.month - 1);
+    expect(find.byType(DropdownButton<DateTime>), findsNothing);
+    if (previous.year != now.year) {
+      await tester.tap(find.byTooltip('上一年'));
+      await tester.pumpAndSettle();
+    }
+    await tester.tap(
+      find.byKey(ValueKey('order-month-${previous.year}-${previous.month}')),
+    );
+    await tester.pumpAndSettle();
+    final label =
+        '${previous.year}年${previous.month.toString().padLeft(2, '0')}月';
+    await tester.tap(find.text('确定'));
+    await tester.pumpAndSettle();
+    expect(find.text(label), findsOneWidget);
+    expect(tester.takeException(), isNull);
+    await tester.tap(find.byTooltip('显示全部订单'));
+    await tester.pumpAndSettle();
+    expect(find.text('全部订单'), findsOneWidget);
+    await tester.tap(find.text('按日'));
+    await tester.pumpAndSettle();
+    expect(find.byTooltip('选择日期'), findsOneWidget);
+    expect(tester.takeException(), isNull);
   });
 
   test('accounting deducts unfinished and canceled orders', () {

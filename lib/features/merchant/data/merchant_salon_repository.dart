@@ -26,6 +26,27 @@ class MerchantSalonRepository {
     }
   }
 
+  Future<Map<String, dynamic>> createSalonPost({
+    required String authorStaffId,
+    required String content,
+    required List<String> imageUrls,
+  }) async {
+    final response = await _apiClient.request(
+      '/merchant/salon-posts',
+      method: 'POST',
+      data: {
+        'authorStaffId': authorStaffId,
+        'content': content,
+        'imageUrls': imageUrls,
+      },
+    );
+    return Map<String, dynamic>.from(response.data as Map);
+  }
+
+  Future<void> deleteSalonPost(String id) async {
+    await _apiClient.request('/merchant/salon-posts/$id', method: 'DELETE');
+  }
+
   Future<Map<String, dynamic>> geocodeAddress(String address) async {
     final response = await _apiClient.request(
       '/merchant/geocode',

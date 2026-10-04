@@ -58,6 +58,8 @@ void setStaffExtraServiceFee(Map<String, dynamic> staff, int fee) {
 
 typedef CropPickedImageResult = ({Uint8List? image, bool closeBatch});
 
+const salonCoverAspectRatio = 1.32;
+
 Future<List<Uint8List>?> cropPickedImageBatch(
   List<PickedImage> images,
   Future<CropPickedImageResult> Function(
@@ -90,6 +92,21 @@ const serviceTagOptions = <({String id, String label})>[
   (id: 'nutrition', label: '营养'),
 ];
 const maxServiceTagCount = 4;
+
+const afterSalesPolicyOptions = <({String id, String label})>[
+  (id: 'haircut_7_day_adjustment', label: '剪发七日内不满意免费重新调整'),
+  (id: 'color_perm_15_day_redo', label: '染烫十五日内不满意免费重做'),
+];
+
+void normalizeAfterSalesPolicyIds(Map<String, dynamic> salon) {
+  final incoming = (salon['afterSalesPolicyIds'] as List? ?? const [])
+      .whereType<String>()
+      .toSet();
+  salon['afterSalesPolicyIds'] = afterSalesPolicyOptions
+      .where((policy) => incoming.contains(policy.id))
+      .map((policy) => policy.id)
+      .toList();
+}
 
 const staffRoleOptions = <({String id, String label})>[
   (id: 'junior_barber', label: '初级理发师'),
@@ -131,10 +148,12 @@ class MerchantSalonScreen extends StatefulWidget {
     super.key,
     this.repository,
     this.enableRealtime = true,
+    this.initialTabIndex = 0,
   });
 
   final MerchantSalonRepository? repository;
   final bool enableRealtime;
+  final int initialTabIndex;
 
   @override
   State<MerchantSalonScreen> createState() => _MerchantSalonScreenState();
@@ -158,12 +177,17 @@ class _MerchantSalonScreenState extends State<MerchantSalonScreen> {
   bool _hasTriedAutoLocation = false;
   bool _isParsingImage = false;
   bool _isUploadingCover = false;
+  bool _isUploadingPostImages = false;
+  bool _isPublishingPost = false;
   int? _uploadingStaffIndex;
   final Map<Map<String, dynamic>, CancelToken> _serviceUploads = {};
   String _errorMessage = '';
   Map<String, dynamic> _salon = {};
   List<Map<String, dynamic>> _services = [];
   List<Map<String, dynamic>> _staff = [];
+  List<Map<String, dynamic>> _posts = [];
+  List<String> _postImageUrls = [];
+  String? _postAuthorStaffId;
   final List<MerchantNotification> _notifications = [];
   final Set<String> _notifiedReviewIds = {};
   StreamSubscription<Map<String, dynamic>>? _bookingUpdateSubscription;
@@ -172,6 +196,7 @@ class _MerchantSalonScreenState extends State<MerchantSalonScreen> {
   final Map<int, String> _absenceStartTimesByStaffIndex = {};
   final Map<int, String> _absenceEndTimesByStaffIndex = {};
   final TextEditingController _addressController = TextEditingController();
+  final TextEditingController _postContentController = TextEditingController();
   final GlobalKey _tabBarKey = GlobalKey();
   OverlayEntry? _messageOverlay;
   Timer? _messageTimer;
@@ -197,6 +222,7 @@ class _MerchantSalonScreenState extends State<MerchantSalonScreen> {
     _messageTimer?.cancel();
     _messageOverlay?.remove();
     _addressController.dispose();
+    _postContentController.dispose();
     super.dispose();
   }
 
@@ -211,9 +237,11 @@ class _MerchantSalonScreenState extends State<MerchantSalonScreen> {
       if (!mounted) return;
       setState(() {
         _salon = salon;
+        normalizeAfterSalesPolicyIds(_salon);
         _setSalonAddress(_salonAddressText());
         _services = _mapList(salon['services']);
         _staff = _mapList(salon['staff']);
+        _posts = _mapList(salon['posts']);
         for (final service in _services) {
           normalizeServiceTagIds(service);
           normalizeServicePromotionRequest(service);
@@ -227,6 +255,7 @@ class _MerchantSalonScreenState extends State<MerchantSalonScreen> {
           final feeFen = profile['extraServiceFeeFen'];
           setStaffExtraServiceFee(profile, feeFen is int ? feeFen ~/ 100 : 0);
         }
+        _postAuthorStaffId = _firstSavedStaffId();
         _isLoading = false;
       });
       unawaited(_autoFillAddressFromCurrentLocation());
@@ -372,6 +401,7 @@ class _MerchantSalonScreenState extends State<MerchantSalonScreen> {
       if (!mounted) return;
       setState(() {
         _salon = savedSalon;
+        normalizeAfterSalesPolicyIds(_salon);
         _setSalonAddress(_salonAddressText());
         _services = _mapList(savedSalon['services']);
         _staff = _mapList(savedSalon['staff']);
@@ -381,6 +411,11 @@ class _MerchantSalonScreenState extends State<MerchantSalonScreen> {
         }
         for (final profile in _staff) {
           normalizeStaffRole(profile);
+        }
+        if (!_staff.any(
+          (profile) => profile['id']?.toString() == _postAuthorStaffId,
+        )) {
+          _postAuthorStaffId = _firstSavedStaffId();
         }
       });
       _showTopMessage(
@@ -483,6 +518,14 @@ class _MerchantSalonScreenState extends State<MerchantSalonScreen> {
       ]) {
         if (text(item.$2).isEmpty) return '请填写${item.$1}';
       }
+    }
+    return null;
+  }
+
+  String? _firstSavedStaffId() {
+    for (final profile in _staff) {
+      final id = profile['id']?.toString() ?? '';
+      if (id.isNotEmpty) return id;
     }
     return null;
   }
@@ -988,8 +1031,8 @@ class _MerchantSalonScreenState extends State<MerchantSalonScreen> {
     if (pickedImage == null || !mounted) return;
     final cropResult = await _cropPickedImage(
       pickedImage,
-      title: '裁剪封面图（3:2）',
-      aspectRatio: 3 / 2,
+      title: '裁剪封面图（1.32:1）',
+      aspectRatio: salonCoverAspectRatio,
     );
     final croppedImage = cropResult.image;
     if (croppedImage == null || !mounted) return;
@@ -1054,6 +1097,103 @@ class _MerchantSalonScreenState extends State<MerchantSalonScreen> {
       _showTopMessage(userFacingApiError(e, fallback: '轮播图上传失败，请稍后重试'));
     } finally {
       if (mounted) setState(() => _isUploadingCover = false);
+    }
+  }
+
+  Future<void> _uploadPostImages() async {
+    final remaining = 9 - _postImageUrls.length;
+    if (remaining <= 0) {
+      _showTopMessage('每条动态最多上传9张图片');
+      return;
+    }
+    final pickedImages = await _pickImagesOrShowError(limit: remaining);
+    if (!mounted || pickedImages.isEmpty) return;
+    setState(() => _isUploadingPostImages = true);
+    try {
+      for (final image in pickedImages) {
+        final url = await _repository.uploadImage(
+          fileName: image.fileName,
+          base64Data: image.base64Data,
+        );
+        if (!mounted) return;
+        setState(() => _postImageUrls = {..._postImageUrls, url}.toList());
+      }
+    } catch (e) {
+      if (mounted) {
+        _showTopMessage(userFacingApiError(e, fallback: '动态图片上传失败，已上传的图片会保留'));
+      }
+    } finally {
+      if (mounted) setState(() => _isUploadingPostImages = false);
+    }
+  }
+
+  Future<void> _publishPost() async {
+    final content = _postContentController.text.trim();
+    if (_postAuthorStaffId == null) {
+      _showTopMessage('请先保存至少一位理发师，再选择投稿人');
+      return;
+    }
+    if (content.isEmpty) {
+      _showTopMessage('请输入动态文字');
+      return;
+    }
+    setState(() => _isPublishingPost = true);
+    try {
+      final post = await _repository.createSalonPost(
+        authorStaffId: _postAuthorStaffId!,
+        content: content,
+        imageUrls: _postImageUrls,
+      );
+      if (!mounted) return;
+      setState(() {
+        _posts.insert(0, post);
+        _postContentController.clear();
+        _postImageUrls = [];
+      });
+      _showTopMessage(
+        '店铺动态已提交审核',
+        iconColor: const Color(0xff214623),
+        icon: Icons.check_circle_outline,
+        backgroundColor: const Color(0xffc5e9cb),
+        textColor: const Color(0xff214623),
+      );
+    } catch (e) {
+      if (mounted) {
+        _showTopMessage(userFacingApiError(e, fallback: '动态发布失败，请稍后重试'));
+      }
+    } finally {
+      if (mounted) setState(() => _isPublishingPost = false);
+    }
+  }
+
+  Future<void> _deletePost(Map<String, dynamic> post) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('删除店铺动态'),
+        content: const Text('删除后将无法恢复，确定继续吗？'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('取消'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('删除'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    try {
+      await _repository.deleteSalonPost(post['id'].toString());
+      if (!mounted) return;
+      setState(() => _posts.remove(post));
+      _showTopMessage('动态已删除');
+    } catch (e) {
+      if (mounted) {
+        _showTopMessage(userFacingApiError(e, fallback: '删除失败，请稍后重试'));
+      }
     }
   }
 
@@ -1260,13 +1400,16 @@ class _MerchantSalonScreenState extends State<MerchantSalonScreen> {
     }
 
     return DefaultTabController(
-      length: 3,
+      length: 4,
+      initialIndex: widget.initialTabIndex,
       child: Column(
         children: [
           Container(
             key: _tabBarKey,
             color: AppTheme.white,
             child: const TabBar(
+              isScrollable: true,
+              tabAlignment: TabAlignment.center,
               labelColor: AppTheme.primaryPink,
               unselectedLabelColor: AppTheme.textDark,
               indicatorColor: AppTheme.primaryPink,
@@ -1274,6 +1417,7 @@ class _MerchantSalonScreenState extends State<MerchantSalonScreen> {
                 Tab(icon: Icon(Icons.storefront), text: '店铺信息'),
                 Tab(icon: Icon(Icons.spa), text: '服务套餐'),
                 Tab(icon: Icon(Icons.badge), text: '理发师'),
+                Tab(icon: Icon(Icons.dynamic_feed), text: '店铺动态'),
               ],
             ),
           ),
@@ -1283,43 +1427,56 @@ class _MerchantSalonScreenState extends State<MerchantSalonScreen> {
                 _buildTabPage(_buildProfileSection()),
                 _buildTabPage(_buildServicesSection()),
                 _buildTabPage(_buildStaffSection()),
+                _buildTabPage(_buildPostsSection(), showReviewNotice: false),
               ],
             ),
           ),
-          Container(
-            padding: const EdgeInsets.all(16),
-            decoration: const BoxDecoration(
-              color: AppTheme.white,
-              border: Border(top: BorderSide(color: AppTheme.accentBeige)),
-            ),
-            child: PageWidth(
-              child: SizedBox(
-                height: 48,
-                child: ElevatedButton.icon(
-                  onPressed: _isSaving || _serviceUploads.isNotEmpty
-                      ? null
-                      : _saveSalon,
-                  icon: _isSaving
-                      ? const SizedBox(
-                          width: 18,
-                          height: 18,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                            color: Colors.white,
-                          ),
-                        )
-                      : const Icon(Icons.save),
-                  label: const Text('保存并提交审核'),
+          Builder(
+            builder: (context) {
+              final controller = DefaultTabController.of(context);
+              return AnimatedBuilder(
+                animation: controller,
+                builder: (context, child) =>
+                    controller.index == 3 ? const SizedBox.shrink() : child!,
+                child: Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: const BoxDecoration(
+                    color: AppTheme.white,
+                    border: Border(
+                      top: BorderSide(color: AppTheme.accentBeige),
+                    ),
+                  ),
+                  child: PageWidth(
+                    child: SizedBox(
+                      height: 48,
+                      child: ElevatedButton.icon(
+                        onPressed: _isSaving || _serviceUploads.isNotEmpty
+                            ? null
+                            : _saveSalon,
+                        icon: _isSaving
+                            ? const SizedBox(
+                                width: 18,
+                                height: 18,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  color: Colors.white,
+                                ),
+                              )
+                            : const Icon(Icons.save),
+                        label: const Text('保存并提交审核'),
+                      ),
+                    ),
+                  ),
                 ),
-              ),
-            ),
+              );
+            },
           ),
         ],
       ),
     );
   }
 
-  Widget _buildTabPage(Widget child) {
+  Widget _buildTabPage(Widget child, {bool showReviewNotice = true}) {
     return _KeepAliveTabPage(
       child: GestureDetector(
         behavior: HitTestBehavior.translucent,
@@ -1327,8 +1484,10 @@ class _MerchantSalonScreenState extends State<MerchantSalonScreen> {
         child: ListView(
           padding: const EdgeInsets.symmetric(vertical: 20),
           children: [
-            PageWidth(child: _buildContentReviewNotice()),
-            const SizedBox(height: 12),
+            if (showReviewNotice) ...[
+              PageWidth(child: _buildContentReviewNotice()),
+              const SizedBox(height: 12),
+            ],
             PageWidth(child: child),
             const SizedBox(height: 16),
           ],
@@ -1424,10 +1583,70 @@ class _MerchantSalonScreenState extends State<MerchantSalonScreen> {
           minLines: 5,
           maxLength: 200,
         ),
+        _buildAfterSalesPolicySection(),
         _buildCoverImagesUploader(),
         _buildWeeklyClosedDaySection(_salon),
         _buildClosedDatesSection(),
       ],
+    );
+  }
+
+  Widget _buildAfterSalesPolicySection() {
+    final selected = Set<String>.from(
+      (_salon['afterSalesPolicyIds'] as List? ?? const []).whereType<String>(),
+    );
+    return Container(
+      key: const ValueKey('after-sales-policy-section'),
+      width: double.infinity,
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: AppTheme.bgCream,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: AppTheme.accentBeige),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            '售后政策',
+            style: TextStyle(
+              color: AppTheme.textDark,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          const SizedBox(height: 4),
+          const Text(
+            '可多选，勾选后将在小程序店铺详情页展示',
+            style: TextStyle(color: Colors.grey, fontSize: 12),
+          ),
+          const SizedBox(height: 8),
+          for (final policy in afterSalesPolicyOptions)
+            Material(
+              color: Colors.transparent,
+              child: CheckboxListTile(
+                key: ValueKey('after-sales-policy-${policy.id}'),
+                value: selected.contains(policy.id),
+                onChanged: (checked) => setState(() {
+                  if (checked == true) {
+                    selected.add(policy.id);
+                  } else {
+                    selected.remove(policy.id);
+                  }
+                  _salon['afterSalesPolicyIds'] = afterSalesPolicyOptions
+                      .where((option) => selected.contains(option.id))
+                      .map((option) => option.id)
+                      .toList();
+                }),
+                title: Text(policy.label),
+                activeColor: AppTheme.primaryPink,
+                controlAffinity: ListTileControlAffinity.leading,
+                contentPadding: EdgeInsets.zero,
+                dense: true,
+              ),
+            ),
+        ],
+      ),
     );
   }
 
@@ -1988,6 +2207,236 @@ class _MerchantSalonScreenState extends State<MerchantSalonScreen> {
       ],
     );
   }
+
+  Widget _buildPostsSection() {
+    final savedStaff = _staff
+        .where((profile) => (profile['id']?.toString() ?? '').isNotEmpty)
+        .toList();
+    return Column(
+      children: [
+        _buildSection(
+          title: '发布店铺动态',
+          icon: Icons.dynamic_feed,
+          children: [
+            DropdownButtonFormField<String>(
+              initialValue:
+                  savedStaff.any(
+                    (profile) =>
+                        profile['id']?.toString() == _postAuthorStaffId,
+                  )
+                  ? _postAuthorStaffId
+                  : null,
+              decoration: const InputDecoration(
+                labelText: '投稿人',
+                border: OutlineInputBorder(),
+              ),
+              items: savedStaff
+                  .map(
+                    (profile) => DropdownMenuItem<String>(
+                      value: profile['id'].toString(),
+                      child: Text(profile['name']?.toString() ?? ''),
+                    ),
+                  )
+                  .toList(),
+              onChanged: (value) => setState(() => _postAuthorStaffId = value),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              key: const ValueKey('salon-post-content'),
+              controller: _postContentController,
+              minLines: 4,
+              maxLines: 8,
+              maxLength: 500,
+              decoration: const InputDecoration(
+                labelText: '动态文字',
+                hintText: '分享新作品、店铺活动或护理知识',
+                alignLabelWithHint: true,
+                border: OutlineInputBorder(),
+              ),
+            ),
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    '动态图片 ${_postImageUrls.length}/9',
+                    style: const TextStyle(fontWeight: FontWeight.bold),
+                  ),
+                ),
+                OutlinedButton.icon(
+                  onPressed: _isUploadingPostImages ? null : _uploadPostImages,
+                  icon: _isUploadingPostImages
+                      ? const SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(Icons.add_photo_alternate_outlined),
+                  label: Text(_isUploadingPostImages ? '上传中' : '选择图片'),
+                ),
+              ],
+            ),
+            if (_postImageUrls.isNotEmpty) ...[
+              const SizedBox(height: 12),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: _postImageUrls.map((url) {
+                  return Stack(
+                    children: [
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(8),
+                        child: Image.network(
+                          url,
+                          width: 104,
+                          height: 104,
+                          fit: BoxFit.cover,
+                        ),
+                      ),
+                      Positioned(
+                        right: 4,
+                        top: 4,
+                        child: IconButton.filled(
+                          visualDensity: VisualDensity.compact,
+                          tooltip: '移除图片',
+                          onPressed: () => setState(
+                            () =>
+                                _postImageUrls = [..._postImageUrls]
+                                  ..remove(url),
+                          ),
+                          icon: const Icon(Icons.close, size: 16),
+                        ),
+                      ),
+                    ],
+                  );
+                }).toList(),
+              ),
+            ],
+            const SizedBox(height: 16),
+            SizedBox(
+              width: double.infinity,
+              height: 46,
+              child: ElevatedButton.icon(
+                onPressed: _isPublishingPost || _isUploadingPostImages
+                    ? null
+                    : _publishPost,
+                icon: _isPublishingPost
+                    ? const SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: Colors.white,
+                        ),
+                      )
+                    : const Icon(Icons.send),
+                label: Text(_isPublishingPost ? '发布中' : '发布动态'),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 16),
+        _buildSection(
+          title: '已发布动态',
+          icon: Icons.article_outlined,
+          children: _posts.isEmpty
+              ? [_buildEmptyHint('还没有店铺动态')]
+              : _posts.map(_buildPostCard).toList(),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildPostCard(Map<String, dynamic> post) {
+    final images = (post['imageUrls'] as List? ?? const [])
+        .map((value) => value.toString())
+        .where((value) => value.isNotEmpty)
+        .toList();
+    final authorImage = post['authorImageUrl']?.toString() ?? '';
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: AppTheme.bgCream,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: AppTheme.accentBeige),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              CircleAvatar(
+                backgroundImage: authorImage.isEmpty
+                    ? null
+                    : NetworkImage(authorImage),
+                child: authorImage.isEmpty ? const Icon(Icons.person) : null,
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      post['authorName']?.toString() ?? '',
+                      style: const TextStyle(fontWeight: FontWeight.bold),
+                    ),
+                    Text(
+                      _formatPostTime(post['createdAt']),
+                      style: TextStyle(color: Colors.grey[600], fontSize: 12),
+                    ),
+                  ],
+                ),
+              ),
+              Chip(
+                label: Text(_postReviewStatusText(post['reviewStatus'])),
+                visualDensity: VisualDensity.compact,
+              ),
+              IconButton(
+                tooltip: '删除动态',
+                onPressed: () => _deletePost(post),
+                icon: const Icon(Icons.delete_outline),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Text(post['content']?.toString() ?? ''),
+          if (images.isNotEmpty) ...[
+            const SizedBox(height: 12),
+            Wrap(
+              spacing: 6,
+              runSpacing: 6,
+              children: images
+                  .map(
+                    (url) => ClipRRect(
+                      borderRadius: BorderRadius.circular(6),
+                      child: Image.network(
+                        url,
+                        width: 104,
+                        height: 104,
+                        fit: BoxFit.cover,
+                      ),
+                    ),
+                  )
+                  .toList(),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  String _formatPostTime(dynamic value) {
+    final date = DateTime.tryParse(value?.toString() ?? '')?.toLocal();
+    if (date == null) return '';
+    String two(int number) => number.toString().padLeft(2, '0');
+    return '${date.year}-${two(date.month)}-${two(date.day)} ${two(date.hour)}:${two(date.minute)}';
+  }
+
+  String _postReviewStatusText(dynamic value) => switch (value?.toString()) {
+    'approved' => '已通过',
+    'rejected' => '已驳回',
+    _ => '待审核',
+  };
 
   Widget _buildSection({
     required String title,
@@ -2622,11 +3071,11 @@ class _MerchantSalonScreenState extends State<MerchantSalonScreen> {
         _buildImageUploader(
           imageUrl: _coverImage(),
           title: '封面图',
-          emptyText: '尚未上传封面图，为了更好的展示效果请上传3:2的图片',
-          uploadedText: '已上传封面图，为了更好的展示效果请上传3:2的图片',
+          emptyText: '尚未上传封面图，为了更好的展示效果请上传1.32:1的图片',
+          uploadedText: '已上传封面图，为了更好的展示效果请上传1.32:1的图片',
           isUploading: _isUploadingCover,
           onUpload: _uploadCoverImage,
-          aspectRatio: 3 / 2,
+          aspectRatio: salonCoverAspectRatio,
           uploadLabel: '上传并裁剪',
         ),
         _buildPromoImagesUploader(),

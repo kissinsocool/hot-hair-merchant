@@ -14,22 +14,25 @@ import '../data/merchant_salon_repository.dart';
 enum _RescheduleAction { previous }
 
 const merchantOrderStatusTabs = <(String, Set<String>, Color)>[
-  ('待处理', {'pending'}, Colors.red),
-  ('待完成', {'accepted'}, Colors.orange),
-  ('已完成', {'completed'}, Colors.blue),
+  ('新预约待接单', {'pending'}, Colors.red),
+  ('已接单', {'accepted', 'completed'}, Colors.orange),
   ('已取消', {'canceled', 'rejected'}, Colors.grey),
 ];
 
 bool isMerchantOrderVisible(
   BookingOrder order,
   DateTime? selectedDate,
-  String selectedStaffId,
-) {
+  String selectedStaffId, {
+  bool byMonth = false,
+}) {
   if (selectedStaffId.isNotEmpty && order.staffId != selectedStaffId) {
     return false;
   }
   if (order.status == 'pending' || selectedDate == null) return true;
-  return DateUtils.isSameDay(order.startTime, selectedDate);
+  return byMonth
+      ? order.startTime.year == selectedDate.year &&
+            order.startTime.month == selectedDate.month
+      : DateUtils.isSameDay(order.startTime, selectedDate);
 }
 
 bool isBookingSlotEnabled(
@@ -78,6 +81,7 @@ class _MerchantOrdersScreenState extends State<MerchantOrdersScreen> {
   bool _isUpdating = false;
   String _errorMessage = '';
   DateTime? _selectedDate = DateUtils.dateOnly(DateTime.now());
+  bool _filterByMonth = false;
   String _selectedStaffId = '';
   int _selectedStatusTab = 0;
   List<BookingOrder> _orders = [];
@@ -711,6 +715,130 @@ class _MerchantOrdersScreenState extends State<MerchantOrdersScreen> {
     setState(() => _selectedDate = pickedDate);
   }
 
+  Future<void> _pickMonth() async {
+    final now = DateTime.now();
+    var firstMonth = DateTime(now.year - 1, now.month);
+    var lastMonth = DateTime(now.year, now.month, now.day + 6);
+    lastMonth = DateTime(lastMonth.year, lastMonth.month);
+    for (final order in _orders) {
+      final month = DateTime(order.startTime.year, order.startTime.month);
+      if (month.isBefore(firstMonth)) firstMonth = month;
+      if (month.isAfter(lastMonth)) lastMonth = month;
+    }
+    final selected = _selectedDate ?? now;
+    var month = DateTime(selected.year, selected.month);
+    if (month.isBefore(firstMonth) || month.isAfter(lastMonth)) {
+      month = DateTime(now.year, now.month);
+    }
+    var displayedYear = month.year;
+    final pickedMonth = await showDialog<DateTime>(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) {
+          final canShowPreviousYear = displayedYear > firstMonth.year;
+          final canShowNextYear = displayedYear < lastMonth.year;
+          return AlertDialog(
+            title: const Text('选择订单月份'),
+            content: SizedBox(
+              width: 360,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Row(
+                    children: [
+                      IconButton(
+                        tooltip: '上一年',
+                        onPressed: canShowPreviousYear
+                            ? () => setDialogState(() => displayedYear--)
+                            : null,
+                        icon: const Icon(Icons.chevron_left),
+                      ),
+                      Expanded(
+                        child: Text(
+                          '$displayedYear年',
+                          textAlign: TextAlign.center,
+                          style: Theme.of(context).textTheme.titleMedium
+                              ?.copyWith(fontWeight: FontWeight.bold),
+                        ),
+                      ),
+                      IconButton(
+                        tooltip: '下一年',
+                        onPressed: canShowNextYear
+                            ? () => setDialogState(() => displayedYear++)
+                            : null,
+                        icon: const Icon(Icons.chevron_right),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  GridView.builder(
+                    shrinkWrap: true,
+                    physics: const NeverScrollableScrollPhysics(),
+                    gridDelegate:
+                        const SliverGridDelegateWithFixedCrossAxisCount(
+                          crossAxisCount: 3,
+                          crossAxisSpacing: 8,
+                          mainAxisSpacing: 8,
+                          childAspectRatio: 1.8,
+                        ),
+                    itemCount: 12,
+                    itemBuilder: (context, index) {
+                      final value = DateTime(displayedYear, index + 1);
+                      final enabled =
+                          !value.isBefore(firstMonth) &&
+                          !value.isAfter(lastMonth);
+                      final selected = DateUtils.isSameMonth(value, month);
+                      return OutlinedButton(
+                        key: ValueKey(
+                          'order-month-${value.year}-${value.month}',
+                        ),
+                        onPressed: enabled
+                            ? () => setDialogState(() => month = value)
+                            : null,
+                        style: OutlinedButton.styleFrom(
+                          padding: EdgeInsets.zero,
+                          backgroundColor: selected
+                              ? AppTheme.primaryPink
+                              : AppTheme.white,
+                          foregroundColor: selected
+                              ? Colors.white
+                              : AppTheme.textDark,
+                          disabledBackgroundColor: Colors.grey.shade100,
+                          disabledForegroundColor: Colors.grey.shade400,
+                          side: BorderSide(
+                            color: selected
+                                ? AppTheme.primaryPink
+                                : AppTheme.accentBeige,
+                          ),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                        ),
+                        child: Text('${index + 1}月'),
+                      );
+                    },
+                  ),
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('取消'),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.pop(context, month),
+                child: const Text('确定'),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+    if (pickedMonth == null || !mounted) return;
+    setState(() => _selectedDate = pickedMonth);
+  }
+
   void _showAllOrders() {
     setState(() => _selectedDate = null);
   }
@@ -719,8 +847,12 @@ class _MerchantOrdersScreenState extends State<MerchantOrdersScreen> {
   Widget build(BuildContext context) {
     final scopedOrders = _orders
         .where(
-          (order) =>
-              isMerchantOrderVisible(order, _selectedDate, _selectedStaffId),
+          (order) => isMerchantOrderVisible(
+            order,
+            _selectedDate,
+            _selectedStaffId,
+            byMonth: _filterByMonth,
+          ),
         )
         .toList();
     final statusCounts = [
@@ -808,7 +940,7 @@ class _MerchantOrdersScreenState extends State<MerchantOrdersScreen> {
               PageWidth(
                 child: _buildEmptyState(
                   '暂无${merchantOrderStatusTabs[_selectedStatusTab].$1}订单',
-                  '可切换日期、理发师或订单状态查看其他订单',
+                  '可切换日期或月份、理发师或订单状态查看其他订单',
                 ),
               )
             else
@@ -849,7 +981,7 @@ class _MerchantOrdersScreenState extends State<MerchantOrdersScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  '待处理预约 $pendingCount 单',
+                  '新预约待接单 $pendingCount 单',
                   style: const TextStyle(
                     fontSize: 18,
                     fontWeight: FontWeight.bold,
@@ -869,65 +1001,88 @@ class _MerchantOrdersScreenState extends State<MerchantOrdersScreen> {
   Widget _buildDateFilter(int visibleCount) {
     final hasSelectedDate = _selectedDate != null;
     final date = _selectedDate ?? DateUtils.dateOnly(DateTime.now());
-    final label = hasSelectedDate ? _filterDateFormat.format(date) : '全部订单';
+    final label = hasSelectedDate
+        ? (_filterByMonth ? DateFormat('yyyy年MM月') : _filterDateFormat).format(
+            date,
+          )
+        : '全部订单';
     final subtitle = hasSelectedDate
-        ? '待处理及当天订单 $visibleCount 单'
+        ? '新预约待接单及${_filterByMonth ? '当月' : '当天'}订单 $visibleCount 单'
         : '显示全部 $visibleCount 单订单';
 
     return Container(
-      height: 74,
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
       decoration: BoxDecoration(
         color: AppTheme.white,
         borderRadius: BorderRadius.circular(8),
         border: Border.all(color: AppTheme.accentBeige),
       ),
-      child: Row(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Container(
-            width: 36,
-            height: 36,
-            decoration: BoxDecoration(
-              color: Colors.blue.withValues(alpha: 0.10),
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: const Icon(
-              Icons.calendar_today,
-              color: Colors.blue,
-              size: 19,
-            ),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  label,
-                  style: const TextStyle(
-                    color: AppTheme.textDark,
-                    fontSize: 16,
-                    fontWeight: FontWeight.bold,
-                  ),
+          Wrap(
+            spacing: 8,
+            children: [
+              for (final byMonth in [false, true])
+                ChoiceChip(
+                  label: Text(byMonth ? '按月' : '按日'),
+                  selected: _filterByMonth == byMonth,
+                  onSelected: (_) => setState(() {
+                    _filterByMonth = byMonth;
+                    _selectedDate ??= DateUtils.dateOnly(DateTime.now());
+                  }),
                 ),
-                const SizedBox(height: 3),
-                Text(subtitle, style: TextStyle(color: Colors.grey[600])),
-              ],
-            ),
+            ],
           ),
-          IconButton(
-            tooltip: '选择日期',
-            onPressed: _pickDate,
-            icon: const Icon(Icons.edit_calendar),
-            color: AppTheme.primaryPink,
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              Container(
+                width: 36,
+                height: 36,
+                decoration: BoxDecoration(
+                  color: Colors.blue.withValues(alpha: 0.10),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: const Icon(
+                  Icons.calendar_today,
+                  color: Colors.blue,
+                  size: 19,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      label,
+                      style: const TextStyle(
+                        color: AppTheme.textDark,
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(height: 3),
+                    Text(subtitle, style: TextStyle(color: Colors.grey[600])),
+                  ],
+                ),
+              ),
+              IconButton(
+                tooltip: _filterByMonth ? '选择月份' : '选择日期',
+                onPressed: _filterByMonth ? _pickMonth : _pickDate,
+                icon: const Icon(Icons.edit_calendar),
+                color: AppTheme.primaryPink,
+              ),
+              if (hasSelectedDate)
+                IconButton(
+                  tooltip: '显示全部订单',
+                  onPressed: _showAllOrders,
+                  icon: const Icon(Icons.close),
+                  color: Colors.grey[600],
+                ),
+            ],
           ),
-          if (hasSelectedDate)
-            IconButton(
-              tooltip: '显示全部订单',
-              onPressed: _showAllOrders,
-              icon: const Icon(Icons.close),
-              color: Colors.grey[600],
-            ),
         ],
       ),
     );
@@ -1008,6 +1163,7 @@ class _MerchantOrdersScreenState extends State<MerchantOrdersScreen> {
               Tab(
                 child: Text(
                   '${merchantOrderStatusTabs[i].$1}（${statusCounts[i]}）',
+                  textAlign: TextAlign.center,
                   style: TextStyle(
                     color: merchantOrderStatusTabs[i].$3,
                     fontWeight: FontWeight.w600,
@@ -1143,47 +1299,24 @@ class _MerchantOrdersScreenState extends State<MerchantOrdersScreen> {
               ),
             ),
             const SizedBox(height: 10),
-            Row(
-              children: [
-                Expanded(
-                  child: OutlinedButton.icon(
-                    onPressed: _isUpdating
-                        ? null
-                        : () => _updateOrderStatus(
-                            order,
-                            action: 'cancel',
-                            reason: '商家取消预约',
-                            successMessage: '已取消预约，用户将收到取消消息',
-                          ),
-                    icon: const Icon(Icons.event_busy, size: 18),
-                    label: const Text('取消', overflow: TextOverflow.ellipsis),
-                    style: OutlinedButton.styleFrom(
-                      foregroundColor: Colors.orange,
-                      padding: const EdgeInsets.symmetric(horizontal: 8),
-                      side: const BorderSide(color: Colors.orange),
-                    ),
-                  ),
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton.icon(
+                onPressed: _isUpdating
+                    ? null
+                    : () => _updateOrderStatus(
+                        order,
+                        action: 'cancel',
+                        reason: '商家取消预约',
+                        successMessage: '已取消预约，用户将收到取消消息',
+                      ),
+                icon: const Icon(Icons.event_busy, size: 18),
+                label: const Text('取消预约'),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: Colors.orange,
+                  side: const BorderSide(color: Colors.orange),
                 ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: ElevatedButton.icon(
-                    onPressed: _isUpdating
-                        ? null
-                        : () => _updateOrderStatus(
-                            order,
-                            action: 'complete',
-                            successMessage: '已完成订单',
-                          ),
-                    icon: const Icon(Icons.done_all, size: 18),
-                    label: const Text('完成', overflow: TextOverflow.ellipsis),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.blue,
-                      foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(horizontal: 8),
-                    ),
-                  ),
-                ),
-              ],
+              ),
             ),
           ],
         ],
@@ -1222,7 +1355,7 @@ class _MerchantOrdersScreenState extends State<MerchantOrdersScreen> {
         borderRadius: BorderRadius.circular(16),
       ),
       child: Text(
-        label,
+        status == 'pending' ? '新预约待接单' : label,
         style: TextStyle(
           color: color,
           fontSize: 12,

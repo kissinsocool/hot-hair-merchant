@@ -204,6 +204,22 @@ class AdminRepository {
     return data.map((item) => Map<String, dynamic>.from(item as Map)).toList();
   }
 
+  Future<List<Map<String, dynamic>>> fetchSalonPosts() async {
+    final data = await _apiClient.requestAllPages('/admin/salon-posts');
+    return data.map((item) => Map<String, dynamic>.from(item as Map)).toList();
+  }
+
+  Future<void> manageSalonPost({
+    required String id,
+    required String action,
+  }) async {
+    await _apiClient.request(
+      '/admin/salon-posts/$id',
+      method: 'PATCH',
+      data: {'action': action},
+    );
+  }
+
   Future<List<Map<String, dynamic>>> fetchSupportMessages() async {
     final data = await _apiClient.requestAllPages('/admin/support-messages');
     return data.map((item) => Map<String, dynamic>.from(item as Map)).toList();

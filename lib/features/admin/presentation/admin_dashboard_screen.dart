@@ -7,6 +7,7 @@ import 'package:intl/intl.dart';
 import '../../../core/network/api_client.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../booking/domain/booking_order.dart';
+import 'admin_orders_summary_screen.dart';
 import '../../merchant/data/image_upload_picker.dart';
 import '../data/admin_repository.dart';
 
@@ -157,6 +158,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
   List<Map<String, dynamic>> _users = [];
   List<BookingOrder> _bookings = [];
   List<Map<String, dynamic>> _userImages = [];
+  List<Map<String, dynamic>> _salonPosts = [];
   List<Map<String, dynamic>> _supportMessages = [];
   Map<String, dynamic> _ad = {};
   Map<String, dynamic> _couponCampaign = {};
@@ -176,6 +178,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
         _repository.fetchUsers(),
         _repository.fetchBookings(),
         _repository.fetchUserImages(),
+        _repository.fetchSalonPosts(),
         _repository.fetchAd(),
         _repository.fetchSupportMessages(),
         _repository.fetchCouponCampaign(),
@@ -187,9 +190,10 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
         _users = results[2] as List<Map<String, dynamic>>;
         _bookings = results[3] as List<BookingOrder>;
         _userImages = results[4] as List<Map<String, dynamic>>;
-        _ad = results[5] as Map<String, dynamic>;
-        _supportMessages = results[6] as List<Map<String, dynamic>>;
-        _couponCampaign = results[7] as Map<String, dynamic>;
+        _salonPosts = results[5] as List<Map<String, dynamic>>;
+        _ad = results[6] as Map<String, dynamic>;
+        _supportMessages = results[7] as List<Map<String, dynamic>>;
+        _couponCampaign = results[8] as Map<String, dynamic>;
       });
     } on DioException catch (error) {
       if (error.response?.statusCode == 401) {
@@ -215,7 +219,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
   @override
   Widget build(BuildContext context) {
     return DefaultTabController(
-      length: 9,
+      length: 10,
       child: Scaffold(
         backgroundColor: AppTheme.bgCream,
         appBar: AppBar(
@@ -242,6 +246,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
               Tab(icon: Icon(Icons.storefront_outlined), text: '商家账号'),
               Tab(icon: Icon(Icons.people_outline), text: '客户端用户'),
               Tab(icon: Icon(Icons.rate_review_outlined), text: '评论管理'),
+              Tab(icon: Icon(Icons.dynamic_feed_outlined), text: '动态审核'),
               Tab(icon: Icon(Icons.auto_awesome_outlined), text: '套餐推广'),
               Tab(icon: Icon(Icons.report_outlined), text: '投诉管理'),
               Tab(icon: Icon(Icons.support_agent_outlined), text: '客服消息'),
@@ -256,7 +261,18 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
               )
             : TabBarView(
                 children: [
-                  _OverviewTab(overview: _overview),
+                  _OverviewTab(
+                    overview: _overview,
+                    onViewOrders: () => Navigator.of(context).push(
+                      MaterialPageRoute<void>(
+                        builder: (_) => AdminOrdersSummaryScreen(
+                          orders: _bookings,
+                          merchants: _merchants,
+                          users: _users,
+                        ),
+                      ),
+                    ),
+                  ),
                   _MerchantsTab(
                     merchants: _merchants,
                     onCreate: _showCreateMerchantDialog,
@@ -271,6 +287,10 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                   ),
                   _UsersTab(users: _users, onReviewAvatar: _reviewUserAvatar),
                   _ReviewsTab(items: _userImages, onAction: _manageReview),
+                  _SalonPostsTab(
+                    posts: _salonPosts,
+                    onAction: _manageSalonPost,
+                  ),
                   _ServicePromotionsTab(
                     merchants: _merchants,
                     onAction: _reviewServicePromotion,
@@ -461,6 +481,48 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
       await _repository.manageUserImage(
         bookingId: item['bookingId'].toString(),
         type: item['type'].toString(),
+        action: action,
+      );
+      await _load();
+    } catch (error) {
+      if (!mounted) return;
+      if (error is DioException && error.response?.statusCode == 401) {
+        widget.onLogout();
+        return;
+      }
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(_saveError(error))));
+    }
+  }
+
+  Future<void> _manageSalonPost(
+    Map<String, dynamic> post,
+    String action,
+  ) async {
+    if (action == 'delete') {
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('删除动态'),
+          content: const Text('删除后不可恢复，确定继续吗？'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('取消'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('删除'),
+            ),
+          ],
+        ),
+      );
+      if (confirmed != true) return;
+    }
+    try {
+      await _repository.manageSalonPost(
+        id: post['id'].toString(),
         action: action,
       );
       await _load();
@@ -1018,9 +1080,10 @@ String _randomDigits(int length) {
 }
 
 class _OverviewTab extends StatelessWidget {
-  const _OverviewTab({required this.overview});
+  const _OverviewTab({required this.overview, required this.onViewOrders});
 
   final Map<String, dynamic> overview;
+  final VoidCallback onViewOrders;
 
   @override
   Widget build(BuildContext context) {
@@ -1059,28 +1122,32 @@ class _OverviewTab extends StatelessWidget {
       crossAxisSpacing: 14,
       children: [
         for (final item in items)
-          Container(
-            padding: const EdgeInsets.all(18),
-            decoration: _panelDecoration(),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Text(item.$1, style: TextStyle(color: Colors.grey[600])),
-                const SizedBox(height: 8),
-                Text(
-                  '${item.$2 ?? 0}',
-                  style: const TextStyle(
-                    color: AppTheme.textDark,
-                    fontSize: 28,
-                    fontWeight: FontWeight.bold,
+          InkWell(
+            onTap: item.$1 == '全部订单' ? onViewOrders : null,
+            borderRadius: BorderRadius.circular(8),
+            child: Container(
+              padding: const EdgeInsets.all(18),
+              decoration: _panelDecoration(),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Text(item.$1, style: TextStyle(color: Colors.grey[600])),
+                  const SizedBox(height: 8),
+                  Text(
+                    '${item.$2 ?? 0}',
+                    style: const TextStyle(
+                      color: AppTheme.textDark,
+                      fontSize: 28,
+                      fontWeight: FontWeight.bold,
+                    ),
                   ),
-                ),
-                if (item.$3.isNotEmpty) ...[
-                  const SizedBox(height: 4),
-                  Text(item.$3, style: TextStyle(color: Colors.grey[600])),
+                  if (item.$3.isNotEmpty) ...[
+                    const SizedBox(height: 4),
+                    Text(item.$3, style: TextStyle(color: Colors.grey[600])),
+                  ],
                 ],
-              ],
+              ),
             ),
           ),
       ],
@@ -1503,7 +1570,7 @@ class _AdTabState extends State<_AdTab> {
     _imageUrl = widget.config['imageUrl']?.toString() ?? '';
     _enabled = widget.config['enabled'] != false;
     _linkController = TextEditingController(
-      text: widget.config['link']?.toString() ?? '/pages/ad/ad',
+      text: widget.config['link']?.toString() ?? '',
     );
   }
 
@@ -1513,7 +1580,7 @@ class _AdTabState extends State<_AdTab> {
     if (oldWidget.config == widget.config) return;
     _imageUrl = widget.config['imageUrl']?.toString() ?? '';
     _enabled = widget.config['enabled'] != false;
-    _linkController.text = widget.config['link']?.toString() ?? '/pages/ad/ad';
+    _linkController.text = widget.config['link']?.toString() ?? '';
   }
 
   @override
@@ -1533,8 +1600,13 @@ class _AdTabState extends State<_AdTab> {
 
   Future<void> _save() async {
     final link = _linkController.text.trim();
-    if (!link.startsWith('/pages/')) {
-      _showMessage('跳转链接必须是 /pages/... 小程序页面路径');
+    final uri = Uri.tryParse(link);
+    final isHttps =
+        uri?.scheme == 'https' &&
+        uri?.host.isNotEmpty == true &&
+        uri?.userInfo.isEmpty == true;
+    if (!link.startsWith('/pages/') && !isHttps) {
+      _showMessage('请输入 HTTPS H5 地址或 /pages/... 小程序页面路径');
       return;
     }
     if (_enabled && _image == null && _imageUrl.isEmpty) {
@@ -1616,8 +1688,8 @@ class _AdTabState extends State<_AdTab> {
                   controller: _linkController,
                   decoration: const InputDecoration(
                     labelText: '点击后跳转链接',
-                    hintText: '/pages/ad/ad',
-                    helperText: '填写小程序内部页面路径，可带查询参数',
+                    hintText: 'https://media.hothaircc.cn/ad/index.html',
+                    helperText: '填写 HTTPS H5 地址；旧版小程序内部路径仍兼容',
                   ),
                 ),
                 const SizedBox(height: 12),
@@ -2290,6 +2362,130 @@ class _ReviewsTab extends StatelessWidget {
                             const SizedBox(width: 8),
                             TextButton(
                               onPressed: () => onAction(item, 'delete'),
+                              style: TextButton.styleFrom(
+                                foregroundColor: Colors.red,
+                              ),
+                              child: const Text('删除'),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _SalonPostsTab extends StatelessWidget {
+  const _SalonPostsTab({required this.posts, required this.onAction});
+
+  final List<Map<String, dynamic>> posts;
+  final void Function(Map<String, dynamic> post, String action) onAction;
+
+  @override
+  Widget build(BuildContext context) {
+    final pending = posts
+        .where((post) => !isAuditedReviewStatus(post['reviewStatus']))
+        .toList();
+    final approved = posts
+        .where((post) => post['reviewStatus'] == 'approved')
+        .toList();
+    final rejected = posts
+        .where((post) => post['reviewStatus'] == 'rejected')
+        .toList();
+    return DefaultTabController(
+      length: 3,
+      child: Column(
+        children: [
+          const Material(
+            color: AppTheme.white,
+            child: TabBar(
+              labelColor: AppTheme.primaryPink,
+              unselectedLabelColor: AppTheme.textDark,
+              indicatorColor: AppTheme.primaryPink,
+              tabs: [
+                Tab(text: '待审核'),
+                Tab(text: '已审核'),
+                Tab(text: '已驳回'),
+              ],
+            ),
+          ),
+          Expanded(
+            child: TabBarView(
+              children: [
+                _buildTable(pending, '暂无待审核动态'),
+                _buildTable(approved, '暂无已审核动态'),
+                _buildTable(rejected, '暂无已驳回动态'),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildTable(List<Map<String, dynamic>> rows, String emptyText) {
+    if (rows.isEmpty) return Center(child: Text(emptyText));
+    return ListView(
+      padding: const EdgeInsets.all(20),
+      children: [
+        Container(
+          decoration: _panelDecoration(),
+          child: SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: DataTable(
+              dataRowMinHeight: 76,
+              dataRowMaxHeight: 140,
+              columns: const [
+                DataColumn(label: Text('投稿人')),
+                DataColumn(label: Text('动态内容')),
+                DataColumn(label: Text('图片')),
+                DataColumn(label: Text('发布时间')),
+                DataColumn(label: Text('关联商家')),
+                DataColumn(label: Text('状态')),
+                DataColumn(label: Text('操作')),
+              ],
+              rows: [
+                for (final post in rows)
+                  DataRow(
+                    cells: [
+                      DataCell(Text(post['authorName']?.toString() ?? '-')),
+                      DataCell(
+                        SizedBox(
+                          width: 280,
+                          child: Text(post['content']?.toString() ?? '-'),
+                        ),
+                      ),
+                      DataCell(_ImageThumbnails(item: post)),
+                      DataCell(Text(_itemTime(post['createdAt']))),
+                      DataCell(Text(post['salonName']?.toString() ?? '-')),
+                      DataCell(
+                        _ReviewStatus(status: post['reviewStatus']?.toString()),
+                      ),
+                      DataCell(
+                        Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            if (post['reviewStatus'] != 'approved')
+                              FilledButton(
+                                onPressed: () => onAction(post, 'approve'),
+                                child: const Text('审核通过'),
+                              ),
+                            if (post['reviewStatus'] == 'pending')
+                              const SizedBox(width: 8),
+                            if (post['reviewStatus'] != 'rejected')
+                              OutlinedButton(
+                                onPressed: () => onAction(post, 'reject'),
+                                child: const Text('驳回'),
+                              ),
+                            const SizedBox(width: 8),
+                            TextButton(
+                              onPressed: () => onAction(post, 'delete'),
                               style: TextButton.styleFrom(
                                 foregroundColor: Colors.red,
                               ),
