@@ -5,7 +5,7 @@ import 'package:flutter/material.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/widgets/page_width.dart';
 import '../../auth/data/merchant_session_store.dart';
-import '../../merchant/data/image_upload_picker.dart';
+import '../../../core/image/image_upload_picker.dart';
 import '../data/merchant_account_repository.dart';
 
 class MerchantAccountScreen extends StatefulWidget {

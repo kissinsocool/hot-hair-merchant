@@ -12,7 +12,7 @@ import '../../../core/theme/app_theme.dart';
 import '../../../core/widgets/native_multiline_text_field.dart';
 import '../../../core/widgets/page_width.dart';
 import '../../booking/data/booking_update_stream.dart';
-import '../data/image_upload_picker.dart';
+import '../../../core/image/image_upload_picker.dart';
 import '../data/merchant_salon_repository.dart';
 import 'merchant_notifications_screen.dart';
 
@@ -393,8 +393,16 @@ class _MerchantSalonScreenState extends State<MerchantSalonScreen> {
 
     setState(() => _isSaving = true);
     try {
+      final salonPayload = Map<String, dynamic>.from(_salon);
+      if ((salonPayload['description']?.toString().trim() ?? '').isEmpty) {
+        salonPayload['description'] =
+            (salonPayload['fullDescription']?.toString().trim() ?? '')
+                .characters
+                .take(20)
+                .toString();
+      }
       final savedSalon = await _repository.saveSalon({
-        ..._salon,
+        ...salonPayload,
         'services': _services,
         'staff': _staff,
       });
@@ -458,7 +466,6 @@ class _MerchantSalonScreenState extends State<MerchantSalonScreen> {
       ('店铺地址', _salon['address']),
       ('营业时间', _salon['openingHours']),
       ('电话', _salon['phone']),
-      ('首页短介绍', _salon['description']),
       ('详情页关于我们', _salon['fullDescription']),
       ('封面图', _salon['image']),
     ]) {
@@ -1570,7 +1577,7 @@ class _MerchantSalonScreenState extends State<MerchantSalonScreen> {
           ],
         ),
         NativeMultilineTextField(
-          label: '首页短介绍',
+          label: '首页短介绍（选填，未填则取详情前20字）',
           value: _salon['description']?.toString() ?? '',
           onChanged: (value) => _salon['description'] = value,
           minLines: 3,
@@ -1583,8 +1590,8 @@ class _MerchantSalonScreenState extends State<MerchantSalonScreen> {
           minLines: 5,
           maxLength: 200,
         ),
-        _buildAfterSalesPolicySection(),
         _buildCoverImagesUploader(),
+        _buildAfterSalesPolicySection(),
         _buildWeeklyClosedDaySection(_salon),
         _buildClosedDatesSection(),
       ],
@@ -1599,50 +1606,106 @@ class _MerchantSalonScreenState extends State<MerchantSalonScreen> {
       key: const ValueKey('after-sales-policy-section'),
       width: double.infinity,
       margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.all(12),
+      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: AppTheme.bgCream,
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: AppTheme.accentBeige),
+        color: AppTheme.white,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppTheme.primaryPink.withValues(alpha: 0.35)),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x0F000000),
+            blurRadius: 12,
+            offset: Offset(0, 4),
+          ),
+        ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
-            '售后政策',
-            style: TextStyle(
-              color: AppTheme.textDark,
-              fontWeight: FontWeight.bold,
-            ),
+          Row(
+            children: [
+              Container(
+                width: 36,
+                height: 36,
+                decoration: BoxDecoration(
+                  color: AppTheme.primaryPink.withValues(alpha: 0.14),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: const Icon(
+                  Icons.verified_user_outlined,
+                  color: AppTheme.primaryPink,
+                  size: 20,
+                ),
+              ),
+              const SizedBox(width: 10),
+              const Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      '售后政策',
+                      style: TextStyle(
+                        color: AppTheme.textDark,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    SizedBox(height: 2),
+                    Text(
+                      '可多选，勾选后将在小程序店铺详情页展示',
+                      style: TextStyle(color: Colors.grey, fontSize: 12),
+                    ),
+                  ],
+                ),
+              ),
+            ],
           ),
-          const SizedBox(height: 4),
-          const Text(
-            '可多选，勾选后将在小程序店铺详情页展示',
-            style: TextStyle(color: Colors.grey, fontSize: 12),
-          ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 12),
           for (final policy in afterSalesPolicyOptions)
-            Material(
-              color: Colors.transparent,
-              child: CheckboxListTile(
-                key: ValueKey('after-sales-policy-${policy.id}'),
-                value: selected.contains(policy.id),
-                onChanged: (checked) => setState(() {
-                  if (checked == true) {
-                    selected.add(policy.id);
-                  } else {
-                    selected.remove(policy.id);
-                  }
-                  _salon['afterSalesPolicyIds'] = afterSalesPolicyOptions
-                      .where((option) => selected.contains(option.id))
-                      .map((option) => option.id)
-                      .toList();
-                }),
-                title: Text(policy.label),
-                activeColor: AppTheme.primaryPink,
-                controlAffinity: ListTileControlAffinity.leading,
-                contentPadding: EdgeInsets.zero,
-                dense: true,
+            Padding(
+              padding: const EdgeInsets.only(top: 8),
+              child: Material(
+                color: selected.contains(policy.id)
+                    ? AppTheme.primaryPink.withValues(alpha: 0.10)
+                    : AppTheme.bgCream,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10),
+                  side: BorderSide(
+                    color: selected.contains(policy.id)
+                        ? AppTheme.primaryPink.withValues(alpha: 0.5)
+                        : AppTheme.accentBeige,
+                  ),
+                ),
+                clipBehavior: Clip.antiAlias,
+                child: CheckboxListTile(
+                  key: ValueKey('after-sales-policy-${policy.id}'),
+                  value: selected.contains(policy.id),
+                  onChanged: (checked) => setState(() {
+                    if (checked == true) {
+                      selected.add(policy.id);
+                    } else {
+                      selected.remove(policy.id);
+                    }
+                    _salon['afterSalesPolicyIds'] = afterSalesPolicyOptions
+                        .where((option) => selected.contains(option.id))
+                        .map((option) => option.id)
+                        .toList();
+                  }),
+                  title: Text(
+                    policy.label,
+                    style: const TextStyle(
+                      color: AppTheme.textDark,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                  activeColor: AppTheme.primaryPink,
+                  checkColor: AppTheme.white,
+                  controlAffinity: ListTileControlAffinity.leading,
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 10),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  dense: true,
+                ),
               ),
             ),
         ],

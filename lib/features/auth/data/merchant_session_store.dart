@@ -8,6 +8,8 @@ class MerchantSession {
   final Map<String, dynamic> user;
 }
 
+enum PortalRole { merchant, admin }
+
 abstract class MerchantSessionStore {
   Future<MerchantSession?> read();
 
@@ -15,5 +17,5 @@ abstract class MerchantSessionStore {
 
   Future<void> clear();
 
-  factory MerchantSessionStore() = MerchantSessionStoreImpl;
+  factory MerchantSessionStore({PortalRole role}) = MerchantSessionStoreImpl;
 }

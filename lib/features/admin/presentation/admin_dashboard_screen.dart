@@ -8,7 +8,7 @@ import '../../../core/network/api_client.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../booking/domain/booking_order.dart';
 import 'admin_orders_summary_screen.dart';
-import '../../merchant/data/image_upload_picker.dart';
+import '../../../core/image/image_upload_picker.dart';
 import '../data/admin_repository.dart';
 
 ({

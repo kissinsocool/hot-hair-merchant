@@ -4,10 +4,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'core/theme/app_theme.dart';
 import 'features/account/presentation/merchant_account_screen.dart';
-import 'features/admin/presentation/admin_dashboard_screen.dart';
-import 'features/auth/data/merchant_auth_repository.dart';
 import 'features/auth/data/merchant_session_store.dart';
-import 'features/auth/presentation/merchant_login_screen.dart';
+import 'features/auth/presentation/portal_auth_gate.dart';
 import 'features/booking/data/booking_update_stream.dart';
 import 'features/merchant/presentation/merchant_orders_screen.dart';
 import 'features/merchant/presentation/merchant_salon_screen.dart';
@@ -34,81 +32,14 @@ class MerchantApp extends StatelessWidget {
         ).copyWith(textScaler: const TextScaler.linear(0.9375)),
         child: child!,
       ),
-      routes: {
-        '/': (_) => const MerchantAuthGate(),
-        '/admin': (_) => const MerchantAuthGate(admin: true),
-      },
-    );
-  }
-}
-
-class MerchantAuthGate extends StatefulWidget {
-  const MerchantAuthGate({super.key, this.admin = false});
-
-  final bool admin;
-
-  @override
-  State<MerchantAuthGate> createState() => _MerchantAuthGateState();
-}
-
-class _MerchantAuthGateState extends State<MerchantAuthGate> {
-  final MerchantAuthRepository _repository = MerchantAuthRepository();
-
-  bool _isLoading = true;
-  MerchantSession? _session;
-
-  @override
-  void initState() {
-    super.initState();
-    _restoreSession();
-  }
-
-  Future<void> _restoreSession() async {
-    var session = await _repository.restoreSession();
-    if (session != null && (session.user['role'] == 'admin') != widget.admin) {
-      await _repository.logout();
-      session = null;
-    }
-    if (!mounted) return;
-    setState(() {
-      _session = session;
-      _isLoading = false;
-    });
-  }
-
-  Future<void> _logout() async {
-    await _repository.logout();
-    if (!mounted) return;
-    setState(() => _session = null);
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    if (_isLoading) {
-      return const Scaffold(
-        backgroundColor: AppTheme.bgCream,
-        body: Center(
-          child: CircularProgressIndicator(color: AppTheme.primaryPink),
+      home: PortalAuthGate(
+        role: PortalRole.merchant,
+        homeBuilder: (session, onLogout, onSessionChanged) => MerchantHomeShell(
+          session: session,
+          onLogout: onLogout,
+          onSessionChanged: onSessionChanged,
         ),
-      );
-    }
-
-    if (_session == null) {
-      return MerchantLoginScreen(
-        repository: _repository,
-        admin: widget.admin,
-        onLoggedIn: (session) => setState(() => _session = session),
-      );
-    }
-
-    if (_session!.user['role'] == 'admin') {
-      return AdminDashboardScreen(onLogout: _logout);
-    }
-
-    return MerchantHomeShell(
-      session: _session!,
-      onLogout: _logout,
-      onSessionChanged: (session) => setState(() => _session = session),
+      ),
     );
   }
 }

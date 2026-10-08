@@ -11,12 +11,12 @@ class MerchantLoginScreen extends StatefulWidget {
     super.key,
     required this.repository,
     required this.onLoggedIn,
-    this.admin = false,
+    this.role = PortalRole.merchant,
   });
 
   final MerchantAuthRepository repository;
   final ValueChanged<MerchantSession> onLoggedIn;
-  final bool admin;
+  final PortalRole role;
 
   @override
   State<MerchantLoginScreen> createState() => _MerchantLoginScreenState();
@@ -40,7 +40,7 @@ class _MerchantLoginScreenState extends State<MerchantLoginScreen> {
   }
 
   Future<void> _submit() async {
-    if (!widget.admin && !_agreedToTerms) {
+    if (widget.role == PortalRole.merchant && !_agreedToTerms) {
       setState(() => _errorMessage = '请先阅读并同意相关协议与规则');
       return;
     }
@@ -55,10 +55,10 @@ class _MerchantLoginScreenState extends State<MerchantLoginScreen> {
       final session = await widget.repository.login(
         username: _usernameController.text.trim(),
         password: _passwordController.text,
-        admin: widget.admin,
       );
       if (!mounted) return;
-      if ((session.user['role'] == 'admin') != widget.admin) {
+      if ((session.user['role'] == 'admin') !=
+          (widget.role == PortalRole.admin)) {
         await widget.repository.logout();
         if (!mounted) return;
         setState(() => _errorMessage = '该账号无权登录此入口');
@@ -128,7 +128,7 @@ class _MerchantLoginScreenState extends State<MerchantLoginScreen> {
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
                     Icon(
-                      widget.admin
+                      widget.role == PortalRole.admin
                           ? Icons.admin_panel_settings
                           : Icons.storefront,
                       color: AppTheme.primaryPink,
@@ -136,7 +136,7 @@ class _MerchantLoginScreenState extends State<MerchantLoginScreen> {
                     ),
                     const SizedBox(height: 14),
                     Text(
-                      widget.admin ? '后台登录' : '商家登录',
+                      widget.role == PortalRole.admin ? '后台登录' : '商家登录',
                       textAlign: TextAlign.center,
                       style: const TextStyle(
                         color: AppTheme.textDark,
@@ -146,7 +146,9 @@ class _MerchantLoginScreenState extends State<MerchantLoginScreen> {
                     ),
                     const SizedBox(height: 6),
                     Text(
-                      widget.admin ? '登录后进行平台管理' : '登录后管理店铺信息、理发师和订单',
+                      widget.role == PortalRole.admin
+                          ? '登录后进行平台管理'
+                          : '登录后管理店铺信息、理发师和订单',
                       textAlign: TextAlign.center,
                       style: TextStyle(color: Colors.grey[600]),
                     ),
@@ -218,7 +220,7 @@ class _MerchantLoginScreenState extends State<MerchantLoginScreen> {
                         label: const Text('登录'),
                       ),
                     ),
-                    if (!widget.admin) ...[
+                    if (widget.role == PortalRole.merchant) ...[
                       const SizedBox(height: 8),
                       Wrap(
                         alignment: WrapAlignment.center,

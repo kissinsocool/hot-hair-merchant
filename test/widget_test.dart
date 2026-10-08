@@ -16,7 +16,7 @@ import 'package:hot_pepper_merchant/features/merchant/data/image_upload_picker.d
 import 'package:hot_pepper_merchant/features/merchant/data/merchant_salon_repository.dart';
 import 'package:hot_pepper_merchant/features/merchant/presentation/merchant_orders_screen.dart';
 import 'package:hot_pepper_merchant/features/merchant/presentation/merchant_salon_screen.dart';
-import 'package:hot_pepper_merchant/main.dart';
+import 'package:hot_pepper_merchant/main_admin.dart';
 
 class _SalonRepositoryWithExistingItems extends MerchantSalonRepository {
   @override
@@ -88,6 +88,18 @@ class _SuccessfulSalonRepository extends MerchantSalonRepository {
   Future<Map<String, dynamic>> saveSalon(Map<String, dynamic> payload) async {
     savedPayload = payload;
     return {...payload, 'contentReviewStatus': 'approved'};
+  }
+}
+
+class _EmptyDescriptionSalonRepository extends _SuccessfulSalonRepository {
+  @override
+  Future<Map<String, dynamic>> fetchSalon() async {
+    final salon = await super.fetchSalon();
+    return {
+      ...salon,
+      'description': '',
+      'fullDescription': '一二三四五六七八九十一二三四五六七八九十二一二三四',
+    };
   }
 }
 
@@ -314,6 +326,26 @@ void main() {
     );
   });
 
+  testWidgets('首页短介绍留空时使用详情介绍前20个字', (tester) async {
+    final repository = _EmptyDescriptionSalonRepository();
+    await tester.pumpWidget(
+      MaterialApp(
+        home: MerchantSalonScreen(
+          repository: repository,
+          enableRealtime: false,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('首页短介绍（选填，未填则取详情前20字）'), findsOneWidget);
+
+    await tester.tap(find.text('保存并提交审核'));
+    await tester.pumpAndSettle();
+
+    expect(repository.savedPayload?['description'], '一二三四五六七八九十一二三四五六七八九十');
+  });
+
   testWidgets('店铺信息未提交时滑到套餐页再返回仍保留', (tester) async {
     await tester.pumpWidget(
       MaterialApp(
@@ -385,7 +417,8 @@ void main() {
 
     final shortDescription = find.byWidgetPredicate(
       (widget) =>
-          widget is TextField && widget.decoration?.labelText == '首页短介绍',
+          widget is TextField &&
+          widget.decoration?.labelText == '首页短介绍（选填，未填则取详情前20字）',
     );
     await tester.tap(salonName);
     await tester.ensureVisible(shortDescription);
@@ -896,6 +929,11 @@ void main() {
       const ValueKey('after-sales-policy-color_perm_15_day_redo'),
     );
     expect(find.text('售后政策'), findsOneWidget);
+    final labels = tester
+        .widgetList<Text>(find.byType(Text))
+        .map((widget) => widget.data)
+        .toList();
+    expect(labels.indexOf('轮播图'), lessThan(labels.indexOf('售后政策')));
     expect(tester.widget<CheckboxListTile>(haircut).value, isFalse);
     expect(tester.widget<CheckboxListTile>(colorPerm).value, isFalse);
 
@@ -966,9 +1004,7 @@ void main() {
   });
 
   testWidgets('shows admin login only for the admin portal', (tester) async {
-    await tester.pumpWidget(const MerchantApp());
-    await tester.pumpAndSettle();
-    tester.state<NavigatorState>(find.byType(Navigator)).pushNamed('/admin');
+    await tester.pumpWidget(const AdminApp());
     await tester.pumpAndSettle();
 
     expect(find.text('后台登录'), findsOneWidget);

@@ -31,3 +31,16 @@ flutter build ios --release \
   --dart-define=API_BASE_URL=https://YOUR_API_HOST/api \
   --dart-define=WS_BASE_URL=wss://YOUR_API_HOST/ws
 ```
+
+## Web portals
+
+The merchant and admin portals have separate entry points and output directories:
+
+```sh
+flutter build web --base-href "/merchant-app/" --output build/merchant-web
+flutter build web --base-href "/admin-app/" --target lib/main_admin.dart --output build/admin-web
+```
+
+Publish the build directories to `/merchant-app/` and `/admin-app/` on the same
+origin. Both portals use the same backend endpoints and separate browser
+sessions.

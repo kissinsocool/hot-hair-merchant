@@ -2,9 +2,12 @@ import '../../../core/network/api_client.dart';
 import 'merchant_session_store.dart';
 
 class MerchantAuthRepository {
-  MerchantAuthRepository({MerchantSessionStore? sessionStore})
-    : _sessionStore = sessionStore ?? MerchantSessionStore();
+  MerchantAuthRepository({
+    this.role = PortalRole.merchant,
+    MerchantSessionStore? sessionStore,
+  }) : _sessionStore = sessionStore ?? MerchantSessionStore(role: role);
 
+  final PortalRole role;
   final ApiClient _apiClient = ApiClient();
   final MerchantSessionStore _sessionStore;
 
@@ -14,9 +17,8 @@ class MerchantAuthRepository {
 
     ApiClient.authToken = session.token;
     try {
-      final role = session.user['role']?.toString();
       final response = await _apiClient.request(
-        role == 'admin' ? '/admin/auth/me' : '/merchant/auth/me',
+        role == PortalRole.admin ? '/admin/auth/me' : '/merchant/auth/me',
       );
       final data = Map<String, dynamic>.from(response.data as Map);
       final user = Map<String, dynamic>.from(data['user'] as Map);
@@ -33,10 +35,9 @@ class MerchantAuthRepository {
   Future<MerchantSession> login({
     required String username,
     required String password,
-    bool admin = false,
   }) async {
     final response = await _apiClient.request(
-      admin ? '/admin/auth/login' : '/merchant/auth/login',
+      role == PortalRole.admin ? '/admin/auth/login' : '/merchant/auth/login',
       method: 'POST',
       data: {'username': username, 'password': password},
     );
