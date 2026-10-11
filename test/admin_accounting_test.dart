@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:hot_pepper_merchant/features/admin/presentation/admin_dashboard_screen.dart';
+import 'package:hot_pepper_merchant/features/admin/domain/admin_rules.dart';
 import 'package:hot_pepper_merchant/features/booking/domain/booking_order.dart';
 
 void main() {

@@ -94,8 +94,11 @@ const serviceTagOptions = <({String id, String label})>[
 const maxServiceTagCount = 4;
 
 const afterSalesPolicyOptions = <({String id, String label})>[
-  (id: 'haircut_7_day_adjustment', label: '剪发七日内不满意免费重新调整'),
+  (id: 'haircut_7_day_adjustment', label: '剪发七日内不满意可重新调整'),
   (id: 'color_perm_15_day_redo', label: '染烫十五日内不满意免费重做'),
+  (id: 'no_active_sales', label: '不主动推销'),
+  (id: 'no_hidden_charges', label: '无隐形消费'),
+  (id: 'unsatisfied_no_charge', label: '不满意免单'),
 ];
 
 void normalizeAfterSalesPolicyIds(Map<String, dynamic> salon) {

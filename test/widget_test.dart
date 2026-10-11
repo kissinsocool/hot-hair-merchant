@@ -10,7 +10,7 @@ import 'package:hot_pepper_merchant/features/account/presentation/merchant_accou
 import 'package:hot_pepper_merchant/features/auth/data/merchant_auth_repository.dart';
 import 'package:hot_pepper_merchant/features/auth/data/merchant_session_store.dart';
 import 'package:hot_pepper_merchant/features/auth/presentation/merchant_login_screen.dart';
-import 'package:hot_pepper_merchant/features/admin/presentation/admin_dashboard_screen.dart';
+import 'package:hot_pepper_merchant/features/admin/domain/admin_rules.dart';
 import 'package:hot_pepper_merchant/features/booking/domain/booking_order.dart';
 import 'package:hot_pepper_merchant/features/merchant/data/image_upload_picker.dart';
 import 'package:hot_pepper_merchant/features/merchant/data/merchant_salon_repository.dart';
@@ -548,8 +548,11 @@ void main() {
 
   test('售后政策使用稳定 ID 和固定展示文案', () {
     expect(afterSalesPolicyOptions, [
-      (id: 'haircut_7_day_adjustment', label: '剪发七日内不满意免费重新调整'),
+      (id: 'haircut_7_day_adjustment', label: '剪发七日内不满意可重新调整'),
       (id: 'color_perm_15_day_redo', label: '染烫十五日内不满意免费重做'),
+      (id: 'no_active_sales', label: '不主动推销'),
+      (id: 'no_hidden_charges', label: '无隐形消费'),
+      (id: 'unsatisfied_no_charge', label: '不满意免单'),
     ]);
   });
 
@@ -928,6 +931,15 @@ void main() {
     final colorPerm = find.byKey(
       const ValueKey('after-sales-policy-color_perm_15_day_redo'),
     );
+    final noActiveSales = find.byKey(
+      const ValueKey('after-sales-policy-no_active_sales'),
+    );
+    final unsatisfiedNoCharge = find.byKey(
+      const ValueKey('after-sales-policy-unsatisfied_no_charge'),
+    );
+    final noHiddenCharges = find.byKey(
+      const ValueKey('after-sales-policy-no_hidden_charges'),
+    );
     expect(find.text('售后政策'), findsOneWidget);
     final labels = tester
         .widgetList<Text>(find.byType(Text))
@@ -936,6 +948,9 @@ void main() {
     expect(labels.indexOf('轮播图'), lessThan(labels.indexOf('售后政策')));
     expect(tester.widget<CheckboxListTile>(haircut).value, isFalse);
     expect(tester.widget<CheckboxListTile>(colorPerm).value, isFalse);
+    expect(tester.widget<CheckboxListTile>(noActiveSales).value, isFalse);
+    expect(tester.widget<CheckboxListTile>(unsatisfiedNoCharge).value, isFalse);
+    expect(tester.widget<CheckboxListTile>(noHiddenCharges).value, isFalse);
 
     await tester.ensureVisible(haircut);
     await tester.pumpAndSettle();
@@ -943,12 +958,27 @@ void main() {
     await tester.pump();
     await tester.tap(colorPerm);
     await tester.pump();
+    await tester.ensureVisible(noActiveSales);
+    await tester.pumpAndSettle();
+    await tester.tap(noActiveSales);
+    await tester.pump();
+    await tester.ensureVisible(unsatisfiedNoCharge);
+    await tester.pumpAndSettle();
+    await tester.tap(unsatisfiedNoCharge);
+    await tester.pump();
+    await tester.ensureVisible(noHiddenCharges);
+    await tester.pumpAndSettle();
+    await tester.tap(noHiddenCharges);
+    await tester.pump();
     await tester.tap(find.text('保存并提交审核'));
     await tester.pumpAndSettle();
 
     expect(repository.savedPayload?['afterSalesPolicyIds'], [
       'haircut_7_day_adjustment',
       'color_perm_15_day_redo',
+      'no_active_sales',
+      'no_hidden_charges',
+      'unsatisfied_no_charge',
     ]);
   });
 
