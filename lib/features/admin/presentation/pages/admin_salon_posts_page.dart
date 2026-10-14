@@ -142,7 +142,16 @@ class _SalonPostsTab extends StatelessWidget {
                       DataCell(
                         SizedBox(
                           width: 280,
-                          child: Text(post['content']?.toString() ?? '-'),
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(post['content']?.toString() ?? '-'),
+                              if ((post['serviceName']?.toString() ?? '')
+                                  .isNotEmpty)
+                                Text('关联套餐：${post['serviceName']}'),
+                            ],
+                          ),
                         ),
                       ),
                       DataCell(AdminImageThumbnails(item: post)),

@@ -191,6 +191,7 @@ class _MerchantSalonScreenState extends State<MerchantSalonScreen> {
   List<Map<String, dynamic>> _posts = [];
   List<String> _postImageUrls = [];
   String? _postAuthorStaffId;
+  String? _postServiceId;
   final List<MerchantNotification> _notifications = [];
   final Set<String> _notifiedReviewIds = {};
   StreamSubscription<Map<String, dynamic>>? _bookingUpdateSubscription;
@@ -198,7 +199,6 @@ class _MerchantSalonScreenState extends State<MerchantSalonScreen> {
   final Map<int, DateTime> _absenceDatesByStaffIndex = {};
   final Map<int, String> _absenceStartTimesByStaffIndex = {};
   final Map<int, String> _absenceEndTimesByStaffIndex = {};
-  final TextEditingController _addressController = TextEditingController();
   final TextEditingController _postContentController = TextEditingController();
   final GlobalKey _tabBarKey = GlobalKey();
   OverlayEntry? _messageOverlay;
@@ -224,7 +224,6 @@ class _MerchantSalonScreenState extends State<MerchantSalonScreen> {
     _bookingUpdateSubscription?.cancel();
     _messageTimer?.cancel();
     _messageOverlay?.remove();
-    _addressController.dispose();
     _postContentController.dispose();
     super.dispose();
   }
@@ -259,6 +258,7 @@ class _MerchantSalonScreenState extends State<MerchantSalonScreen> {
           setStaffExtraServiceFee(profile, feeFen is int ? feeFen ~/ 100 : 0);
         }
         _postAuthorStaffId = _firstSavedStaffId();
+        _postServiceId = null;
         _isLoading = false;
       });
       unawaited(_autoFillAddressFromCurrentLocation());
@@ -397,6 +397,7 @@ class _MerchantSalonScreenState extends State<MerchantSalonScreen> {
     setState(() => _isSaving = true);
     try {
       final salonPayload = Map<String, dynamic>.from(_salon);
+      salonPayload['address'] = _salonAddressText();
       if ((salonPayload['description']?.toString().trim() ?? '').isEmpty) {
         salonPayload['description'] =
             (salonPayload['fullDescription']?.toString().trim() ?? '')
@@ -427,6 +428,9 @@ class _MerchantSalonScreenState extends State<MerchantSalonScreen> {
           (profile) => profile['id']?.toString() == _postAuthorStaffId,
         )) {
           _postAuthorStaffId = _firstSavedStaffId();
+        }
+        if (!_services.any((service) => service['id'] == _postServiceId)) {
+          _postServiceId = null;
         }
       });
       _showTopMessage(
@@ -545,11 +549,7 @@ class _MerchantSalonScreenState extends State<MerchantSalonScreen> {
   }
 
   void _setSalonAddress(String address) {
-    final trimmed = address.trim();
-    _salon['address'] = trimmed;
-    if (_addressController.text != trimmed) {
-      _addressController.text = trimmed;
-    }
+    _salon['address'] = address.trim();
   }
 
   Future<void> _autoFillAddressFromCurrentLocation() async {
@@ -1153,12 +1153,14 @@ class _MerchantSalonScreenState extends State<MerchantSalonScreen> {
         authorStaffId: _postAuthorStaffId!,
         content: content,
         imageUrls: _postImageUrls,
+        serviceId: _postServiceId,
       );
       if (!mounted) return;
       setState(() {
         _posts.insert(0, post);
         _postContentController.clear();
         _postImageUrls = [];
+        _postServiceId = null;
       });
       _showTopMessage(
         '店铺动态已提交审核',
@@ -1954,25 +1956,12 @@ class _MerchantSalonScreenState extends State<MerchantSalonScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        TextFormField(
-          controller: _addressController,
-          maxLines: 3,
+        NativeMultilineTextField(
+          label: '店铺地址',
+          value: _salon['address']?.toString() ?? '',
           minLines: 2,
-          onChanged: (value) => _salon['address'] = value.trim(),
-          decoration: InputDecoration(
-            hintText: '请重新定位生成店铺地址，也可以手动修改',
-            filled: true,
-            fillColor: AppTheme.white,
-            border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
-            enabledBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(8),
-              borderSide: const BorderSide(color: AppTheme.accentBeige),
-            ),
-            focusedBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(8),
-              borderSide: const BorderSide(color: AppTheme.primaryPink),
-            ),
-          ),
+          onChanged: (value) => _salon['address'] = value,
+          hintText: '请重新定位生成店铺地址，也可以手动修改',
         ),
         const SizedBox(height: 10),
         Row(
@@ -2200,14 +2189,12 @@ class _MerchantSalonScreenState extends State<MerchantSalonScreen> {
             }, maxLength: 10),
             _buildServiceTags(service),
             priceAndDuration,
-            _buildTextField(
-              '简介',
-              service['note'],
-              (value) {
-                service['note'] = value;
-              },
+            NativeMultilineTextField(
+              key: ObjectKey(service),
+              label: '简介',
+              value: service['note']?.toString() ?? '',
+              onChanged: (value) => service['note'] = value,
               minLines: 3,
-              maxLines: 5,
               maxLength: 60,
             ),
           ],
@@ -2278,6 +2265,9 @@ class _MerchantSalonScreenState extends State<MerchantSalonScreen> {
     final savedStaff = _staff
         .where((profile) => (profile['id']?.toString() ?? '').isNotEmpty)
         .toList();
+    final savedServices = _services
+        .where((service) => (service['id']?.toString() ?? '').isNotEmpty)
+        .toList();
     return Column(
       children: [
         _buildSection(
@@ -2305,6 +2295,34 @@ class _MerchantSalonScreenState extends State<MerchantSalonScreen> {
                   )
                   .toList(),
               onChanged: (value) => setState(() => _postAuthorStaffId = value),
+            ),
+            const SizedBox(height: 12),
+            DropdownButtonFormField<String>(
+              key: ValueKey('salon-post-service-${_postServiceId ?? 'none'}'),
+              initialValue:
+                  savedServices.any(
+                    (service) => service['id']?.toString() == _postServiceId,
+                  )
+                  ? _postServiceId
+                  : null,
+              decoration: const InputDecoration(
+                labelText: '关联套餐（可选）',
+                border: OutlineInputBorder(),
+              ),
+              items: [
+                const DropdownMenuItem(value: '', child: Text('不关联套餐')),
+                ...savedServices.map(
+                  (service) => DropdownMenuItem(
+                    value: service['id'].toString(),
+                    child: Text(service['name']?.toString() ?? ''),
+                  ),
+                ),
+              ],
+              onChanged: (value) => setState(
+                () => _postServiceId = value == null || value.isEmpty
+                    ? null
+                    : value,
+              ),
             ),
             const SizedBox(height: 12),
             TextField(
@@ -2466,6 +2484,10 @@ class _MerchantSalonScreenState extends State<MerchantSalonScreen> {
           ),
           const SizedBox(height: 10),
           Text(post['content']?.toString() ?? ''),
+          if ((post['serviceName']?.toString() ?? '').isNotEmpty) ...[
+            const SizedBox(height: 8),
+            Text('关联套餐：${post['serviceName']}'),
+          ],
           if (images.isNotEmpty) ...[
             const SizedBox(height: 12),
             Wrap(

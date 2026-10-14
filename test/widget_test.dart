@@ -119,7 +119,9 @@ class _SalonPostRepository extends MerchantSalonRepository {
         'bio': '擅长短发',
       },
     ],
-    'services': <Map<String, dynamic>>[],
+    'services': [
+      {'id': 'service-1', 'name': '剪发套餐', 'tagIds': <String>[]},
+    ],
     'posts': <Map<String, dynamic>>[],
   };
 
@@ -128,6 +130,7 @@ class _SalonPostRepository extends MerchantSalonRepository {
     required String authorStaffId,
     required String content,
     required List<String> imageUrls,
+    String? serviceId,
   }) async {
     createdPost = {
       'id': 'post-1',
@@ -135,6 +138,8 @@ class _SalonPostRepository extends MerchantSalonRepository {
       'authorName': '小林',
       'content': content,
       'imageUrls': imageUrls,
+      'serviceId': serviceId,
+      'serviceName': serviceId == 'service-1' ? '剪发套餐' : '',
       'createdAt': '2026-09-24T10:00:00Z',
     };
     return createdPost!;
@@ -170,13 +175,19 @@ void main() {
       find.byKey(const ValueKey('salon-post-content')),
       '今日短发作品',
     );
+    await tester.tap(find.text('关联套餐（可选）'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('剪发套餐').last);
+    await tester.pumpAndSettle();
     await tester.tap(find.text('发布动态'));
     await tester.pump();
     await tester.pump(const Duration(seconds: 4));
 
     expect(repository.createdPost, containsPair('authorStaffId', 'staff-1'));
     expect(repository.createdPost, containsPair('content', '今日短发作品'));
+    expect(repository.createdPost, containsPair('serviceId', 'service-1'));
     expect(find.text('今日短发作品'), findsOneWidget);
+    expect(find.text('关联套餐：剪发套餐'), findsOneWidget);
   });
 
   test('后台待审核商家只按最后内容提交时间倒序排列，未提交的排最后', () {

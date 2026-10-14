@@ -7,14 +7,16 @@ class NativeMultilineTextField extends StatelessWidget {
     required this.value,
     required this.onChanged,
     required this.minLines,
-    required this.maxLength,
+    this.maxLength,
+    this.hintText,
   });
 
   final String label;
   final String value;
   final ValueChanged<String> onChanged;
   final int minLines;
-  final int maxLength;
+  final int? maxLength;
+  final String? hintText;
 
   @override
   Widget build(BuildContext context) {
@@ -26,7 +28,7 @@ class NativeMultilineTextField extends StatelessWidget {
         maxLines: minLines + 2,
         maxLength: maxLength,
         onChanged: onChanged,
-        decoration: InputDecoration(labelText: label),
+        decoration: InputDecoration(labelText: label, hintText: hintText),
       ),
     );
   }

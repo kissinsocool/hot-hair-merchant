@@ -30,6 +30,7 @@ class MerchantSalonRepository {
     required String authorStaffId,
     required String content,
     required List<String> imageUrls,
+    String? serviceId,
   }) async {
     final response = await _apiClient.request(
       '/merchant/salon-posts',
@@ -38,6 +39,7 @@ class MerchantSalonRepository {
         'authorStaffId': authorStaffId,
         'content': content,
         'imageUrls': imageUrls,
+        'serviceId': ?serviceId,
       },
     );
     return Map<String, dynamic>.from(response.data as Map);

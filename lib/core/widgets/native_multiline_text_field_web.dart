@@ -11,11 +11,11 @@ import '../theme/app_theme.dart';
 html.TextAreaElement createNativeMultilineTextArea({
   required String label,
   required String value,
-  required int maxLength,
+  int? maxLength,
+  String? hintText,
 }) {
-  return html.TextAreaElement()
+  final textarea = html.TextAreaElement()
     ..value = value
-    ..maxLength = maxLength
     ..setAttribute('aria-label', label)
     ..setAttribute('data-native-selection-field', label)
     ..style.width = '100%'
@@ -36,6 +36,9 @@ html.TextAreaElement createNativeMultilineTextArea({
     ..style.setProperty('-webkit-user-select', 'text')
     ..style.setProperty('-webkit-touch-callout', 'default')
     ..style.touchAction = 'none';
+  if (maxLength != null) textarea.maxLength = maxLength;
+  if (hintText != null) textarea.placeholder = hintText;
+  return textarea;
 }
 
 class NativeMultilineTextField extends StatefulWidget {
@@ -45,14 +48,16 @@ class NativeMultilineTextField extends StatefulWidget {
     required this.value,
     required this.onChanged,
     required this.minLines,
-    required this.maxLength,
+    this.maxLength,
+    this.hintText,
   });
 
   final String label;
   final String value;
   final ValueChanged<String> onChanged;
   final int minLines;
-  final int maxLength;
+  final int? maxLength;
+  final String? hintText;
 
   @override
   State<NativeMultilineTextField> createState() =>
@@ -74,6 +79,7 @@ class _NativeMultilineTextFieldState extends State<NativeMultilineTextField> {
       label: widget.label,
       value: widget.value,
       maxLength: widget.maxLength,
+      hintText: widget.hintText,
     );
 
     _subscriptions
@@ -104,9 +110,9 @@ class _NativeMultilineTextFieldState extends State<NativeMultilineTextField> {
   @override
   void didUpdateWidget(NativeMultilineTextField oldWidget) {
     super.didUpdateWidget(oldWidget);
-    _textarea.maxLength = widget.maxLength;
-    if (html.document.activeElement != _textarea &&
-        _textarea.value != widget.value) {
+    _textarea.maxLength = widget.maxLength ?? -1;
+    _textarea.placeholder = widget.hintText ?? '';
+    if (widget.value != oldWidget.value && _textarea.value != widget.value) {
       _textarea.value = widget.value;
     }
   }
@@ -135,7 +141,9 @@ class _NativeMultilineTextFieldState extends State<NativeMultilineTextField> {
         isEmpty: (_textarea.value ?? '').isEmpty,
         decoration: InputDecoration(
           labelText: widget.label,
-          counterText: '${(_textarea.value ?? '').length}/${widget.maxLength}',
+          counterText: widget.maxLength == null
+              ? null
+              : '${(_textarea.value ?? '').length}/${widget.maxLength}',
           filled: true,
           fillColor: AppTheme.white,
           border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),

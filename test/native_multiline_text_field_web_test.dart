@@ -33,4 +33,23 @@ void main() {
     textarea.dispatchEvent(html.Event('input'));
     expect(changedValue, '剪发与染发');
   });
+
+  test('address textarea has no length limit and supports selection', () {
+    final textarea = createNativeMultilineTextArea(
+      label: '店铺地址',
+      value: '旧地址',
+      hintText: '请重新定位生成店铺地址，也可以手动修改',
+    );
+    html.document.body!.append(textarea);
+    addTearDown(textarea.remove);
+    expect(textarea.maxLength, -1);
+    expect(textarea.placeholder, '请重新定位生成店铺地址，也可以手动修改');
+
+    textarea.focus();
+    textarea.setSelectionRange(0, 2);
+    expect(textarea.selectionStart, 0);
+    expect(textarea.selectionEnd, 2);
+    textarea.value = '定位得到的新地址';
+    expect(textarea.value, '定位得到的新地址');
+  });
 }
