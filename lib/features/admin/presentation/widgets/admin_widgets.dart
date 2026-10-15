@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../../core/theme/app_theme.dart';
+import '../../../../core/image/image_urls.dart';
 
 class AdminReviewStatus extends StatelessWidget {
   const AdminReviewStatus({super.key, required this.status});
@@ -49,7 +50,7 @@ class AdminImageThumbnails extends StatelessWidget {
               child: ClipRRect(
                 borderRadius: BorderRadius.circular(6),
                 child: Image.network(
-                  url,
+                  publicThumbnailUrl(url, width: 240),
                   width: 48,
                   height: 48,
                   fit: BoxFit.cover,

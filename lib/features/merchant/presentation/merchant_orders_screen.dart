@@ -5,6 +5,7 @@ import 'package:intl/intl.dart';
 
 import '../../../core/network/api_client.dart';
 import '../../../core/theme/app_theme.dart';
+import '../../../core/image/image_urls.dart';
 import '../../../core/widgets/page_width.dart';
 import '../../booking/data/booking_update_stream.dart';
 import '../../booking/data/order_repository.dart';
@@ -57,6 +58,7 @@ class MerchantOrdersScreen extends StatefulWidget {
   const MerchantOrdersScreen({
     super.key,
     this.repository,
+    this.salonRepository,
     this.enableRealtime = const bool.fromEnvironment(
       'ENABLE_REALTIME',
       defaultValue: true,
@@ -64,6 +66,7 @@ class MerchantOrdersScreen extends StatefulWidget {
   });
 
   final OrderRepository? repository;
+  final MerchantSalonRepository? salonRepository;
   final bool enableRealtime;
 
   @override
@@ -73,7 +76,8 @@ class MerchantOrdersScreen extends StatefulWidget {
 class _MerchantOrdersScreenState extends State<MerchantOrdersScreen> {
   late final OrderRepository _repository =
       widget.repository ?? OrderRepository();
-  final MerchantSalonRepository _salonRepository = MerchantSalonRepository();
+  late final MerchantSalonRepository _salonRepository =
+      widget.salonRepository ?? MerchantSalonRepository();
   final DateFormat _dateFormat = DateFormat('yyyy-MM-dd HH:mm');
   final DateFormat _filterDateFormat = DateFormat('yyyy-MM-dd');
   StreamSubscription<Map<String, dynamic>>? _bookingUpdateSubscription;
@@ -85,6 +89,14 @@ class _MerchantOrdersScreenState extends State<MerchantOrdersScreen> {
   String _selectedStaffId = '';
   int _selectedStatusTab = 0;
   List<BookingOrder> _orders = [];
+  Map<String, int> _counts = {};
+  int _ordersVersion = 0;
+  int _page = 1;
+  bool _hasMore = false;
+  bool _loadingMore = false;
+  bool _ordersDirty = false;
+  bool _salonLoaded = false;
+  Future<void>? _reloadFuture;
   List<Map<String, dynamic>> _staffOptions = [];
 
   @override
@@ -97,7 +109,8 @@ class _MerchantOrdersScreenState extends State<MerchantOrdersScreen> {
     _bookingUpdateSubscription = BookingUpdateStream.instance.stream.listen((
       event,
     ) {
-      if (event['event'] == 'booking.created' ||
+      if (event['event'] == 'authenticated' ||
+          event['event'] == 'booking.created' ||
           event['event'] == 'booking.updated') {
         _loadOrders(silent: true);
       }
@@ -110,41 +123,123 @@ class _MerchantOrdersScreenState extends State<MerchantOrdersScreen> {
     super.dispose();
   }
 
-  Future<void> _loadOrders({bool silent = false}) async {
-    if (!silent) {
+  Map<String, dynamic> _bookingFilters({bool withStatus = true}) {
+    final selected = _selectedDate;
+    return {
+      if (selected != null) ...{
+        'fromDate': DateTime(
+          selected.year,
+          selected.month,
+          _filterByMonth ? 1 : selected.day,
+        ).toIso8601String().split('T').first,
+        'toDate':
+            (_filterByMonth
+                    ? DateTime(selected.year, selected.month + 1)
+                    : DateTime(selected.year, selected.month, selected.day + 1))
+                .toIso8601String()
+                .split('T')
+                .first,
+        'includePending': 'true',
+      },
+      if (_selectedStaffId.isNotEmpty) 'staffId': _selectedStaffId,
+      if (withStatus)
+        'statuses': merchantOrderStatusTabs[_selectedStatusTab].$2.join(','),
+    };
+  }
+
+  Future<void> _loadOrders({bool silent = false}) {
+    _ordersVersion++;
+    _ordersDirty = true;
+    if (!silent) _salonLoaded = false;
+    return _reloadFuture ??= _reloadOrders(
+      silent,
+    ).whenComplete(() => _reloadFuture = null);
+  }
+
+  Future<void> _reloadOrders(bool silent) async {
+    if (!silent && mounted) {
       setState(() {
         _isLoading = true;
         _errorMessage = '';
       });
     }
-
-    try {
-      final results = await Future.wait([
-        _repository.fetchMerchantBookings(),
-        _salonRepository.fetchSalon(),
-      ]);
-      final orders = results[0] as List<BookingOrder>;
-      final salon = Map<String, dynamic>.from(results[1] as Map);
-      final staff = (salon['staff'] as List<dynamic>? ?? [])
-          .map((item) => Map<String, dynamic>.from(item as Map))
-          .toList();
-      if (!mounted) return;
-      setState(() {
-        _orders = orders;
-        _staffOptions = staff;
-        if (_selectedStaffId.isNotEmpty &&
-            !staff.any((item) => item['id']?.toString() == _selectedStaffId)) {
-          _selectedStaffId = '';
+    do {
+      _ordersDirty = false;
+      final version = _ordersVersion;
+      try {
+        final results = await Future.wait([
+          _repository.fetchMerchantBookingPage(
+            page: 1,
+            filters: _bookingFilters(),
+          ),
+          _repository.fetchMerchantBookingCounts(
+            _bookingFilters(withStatus: false),
+          ),
+          if (!_salonLoaded) _salonRepository.fetchSalon(),
+        ]);
+        if (!mounted) return;
+        if (version != _ordersVersion) continue;
+        final page = results[0] as MerchantBookingPage;
+        setState(() {
+          _orders = page.orders;
+          _counts = results[1] as Map<String, int>;
+          _page = 1;
+          _hasMore = page.hasMore;
+          _loadingMore = false;
+          if (results.length > 2) {
+            final salon = results[2] as Map<String, dynamic>;
+            _staffOptions = (salon['staff'] as List? ?? [])
+                .map((item) => Map<String, dynamic>.from(item as Map))
+                .toList();
+            _salonLoaded = true;
+          }
+          if (_selectedStaffId.isNotEmpty &&
+              !_staffOptions.any((staff) => staff['id'] == _selectedStaffId)) {
+            _selectedStaffId = '';
+            _ordersDirty = true;
+          }
+          _isLoading = false;
+          _errorMessage = '';
+        });
+      } catch (error) {
+        if (!mounted) return;
+        if (version == _ordersVersion) {
+          setState(() {
+            _errorMessage = userFacingApiError(error, fallback: '订单加载失败，请稍后重试');
+            _isLoading = false;
+            _loadingMore = false;
+          });
         }
-        _isLoading = false;
-        _errorMessage = '';
-      });
-    } catch (e) {
-      if (!mounted) return;
+      }
+    } while (_ordersDirty && mounted);
+  }
+
+  Future<void> _loadMoreOrders() async {
+    if (_loadingMore || _reloadFuture != null || !_hasMore) return;
+    final version = _ordersVersion;
+    setState(() => _loadingMore = true);
+    try {
+      final next = await _repository.fetchMerchantBookingPage(
+        page: _page + 1,
+        filters: _bookingFilters(),
+      );
+      if (!mounted || version != _ordersVersion) return;
       setState(() {
-        _errorMessage = userFacingApiError(e, fallback: '订单加载失败，请稍后重试');
-        _isLoading = false;
+        final known = _orders.map((order) => order.id).toSet();
+        _orders.addAll(next.orders.where((order) => known.add(order.id)));
+        _page++;
+        _hasMore = next.hasMore;
       });
+    } catch (error) {
+      if (mounted && version == _ordersVersion) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(userFacingApiError(error))));
+      }
+    } finally {
+      if (mounted && version == _ordersVersion) {
+        setState(() => _loadingMore = false);
+      }
     }
   }
 
@@ -226,11 +321,7 @@ class _MerchantOrdersScreenState extends State<MerchantOrdersScreen> {
       List<Map<String, dynamic>> slots;
       setState(() => _isUpdating = true);
       try {
-        slots = await _repository.fetchStaffSlots(
-          order.staffId.isEmpty ? '__no_preference__' : order.staffId,
-          date,
-          salonId: order.salonId,
-        );
+        slots = await _repository.fetchRescheduleSlots(order.id, date);
       } catch (e) {
         if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
@@ -546,9 +637,23 @@ class _MerchantOrdersScreenState extends State<MerchantOrdersScreen> {
   }
 
   Future<String?> _showAssignStaffDialog(BookingOrder order) async {
+    List<BookingOrder> dayOrders;
+    try {
+      dayOrders = await _repository.fetchMerchantBookings(
+        date: order.startTime,
+      );
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(userFacingApiError(error))));
+      }
+      return null;
+    }
+    if (!mounted) return null;
     final availableStaffOptions = availableStaffForOrder(
       _staffOptions,
-      _orders,
+      dayOrders,
       order,
     );
     if (_staffOptions.isEmpty) {
@@ -713,6 +818,7 @@ class _MerchantOrdersScreenState extends State<MerchantOrdersScreen> {
 
     if (pickedDate == null || !mounted) return;
     setState(() => _selectedDate = pickedDate);
+    await _loadOrders(silent: true);
   }
 
   Future<void> _pickMonth() async {
@@ -837,10 +943,12 @@ class _MerchantOrdersScreenState extends State<MerchantOrdersScreen> {
     );
     if (pickedMonth == null || !mounted) return;
     setState(() => _selectedDate = pickedMonth);
+    await _loadOrders(silent: true);
   }
 
   void _showAllOrders() {
     setState(() => _selectedDate = null);
+    _loadOrders(silent: true);
   }
 
   @override
@@ -857,7 +965,7 @@ class _MerchantOrdersScreenState extends State<MerchantOrdersScreen> {
         .toList();
     final statusCounts = [
       for (final tab in merchantOrderStatusTabs)
-        scopedOrders.where((order) => tab.$2.contains(order.status)).length,
+        tab.$2.fold<int>(0, (sum, status) => sum + (_counts[status] ?? 0)),
     ];
     final filteredOrders = scopedOrders
         .where(
@@ -866,9 +974,7 @@ class _MerchantOrdersScreenState extends State<MerchantOrdersScreen> {
           ),
         )
         .toList();
-    final pendingCount = scopedOrders
-        .where((order) => order.status == 'pending')
-        .length;
+    final pendingCount = _counts['pending'] ?? 0;
 
     return Scaffold(
       backgroundColor: AppTheme.bgCream,
@@ -902,7 +1008,9 @@ class _MerchantOrdersScreenState extends State<MerchantOrdersScreen> {
             PageWidth(
               child: LayoutBuilder(
                 builder: (context, constraints) {
-                  final dateFilter = _buildDateFilter(scopedOrders.length);
+                  final dateFilter = _buildDateFilter(
+                    _counts.values.fold<int>(0, (sum, count) => sum + count),
+                  );
                   final staffFilter = _buildStaffFilter();
                   if (constraints.maxWidth < 700) {
                     return Column(
@@ -946,6 +1054,12 @@ class _MerchantOrdersScreenState extends State<MerchantOrdersScreen> {
             else
               ...filteredOrders.map(
                 (order) => PageWidth(child: _buildOrderCard(order)),
+              ),
+            if (_hasMore && !_isLoading)
+              TextButton(
+                key: const ValueKey('merchant-orders-load-more'),
+                onPressed: _loadingMore ? null : _loadMoreOrders,
+                child: Text(_loadingMore ? '加载中…' : '加载更多订单'),
               ),
           ],
         ),
@@ -1030,6 +1144,7 @@ class _MerchantOrdersScreenState extends State<MerchantOrdersScreen> {
                   onSelected: (_) => setState(() {
                     _filterByMonth = byMonth;
                     _selectedDate ??= DateUtils.dateOnly(DateTime.now());
+                    _loadOrders(silent: true);
                   }),
                 ),
             ],
@@ -1129,8 +1244,10 @@ class _MerchantOrdersScreenState extends State<MerchantOrdersScreen> {
                     ),
                   ),
               ],
-              onChanged: (value) =>
-                  setState(() => _selectedStaffId = value ?? ''),
+              onChanged: (value) {
+                setState(() => _selectedStaffId = value ?? '');
+                _loadOrders(silent: true);
+              },
             ),
           ),
         ],
@@ -1149,7 +1266,10 @@ class _MerchantOrdersScreenState extends State<MerchantOrdersScreen> {
         length: merchantOrderStatusTabs.length,
         initialIndex: _selectedStatusTab,
         child: TabBar(
-          onTap: (index) => setState(() => _selectedStatusTab = index),
+          onTap: (index) {
+            setState(() => _selectedStatusTab = index);
+            _loadOrders(silent: true);
+          },
           indicatorSize: TabBarIndicatorSize.tab,
           indicator: BoxDecoration(
             color: AppTheme.primaryPink.withValues(alpha: 0.16),
@@ -1442,7 +1562,7 @@ class _AssignStaffOptionCard extends StatelessWidget {
                           size: 30,
                         )
                       : Image.network(
-                          imageUrl,
+                          publicThumbnailUrl(imageUrl, width: 720),
                           fit: BoxFit.cover,
                           errorBuilder: (context, error, stackTrace) =>
                               const Icon(Icons.person_outline),

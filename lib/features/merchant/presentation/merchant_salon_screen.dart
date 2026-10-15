@@ -9,6 +9,7 @@ import 'package:geolocator/geolocator.dart';
 
 import '../../../core/network/api_client.dart';
 import '../../../core/theme/app_theme.dart';
+import '../../../core/image/image_urls.dart';
 import '../../../core/widgets/native_multiline_text_field.dart';
 import '../../../core/widgets/page_width.dart';
 import '../../booking/data/booking_update_stream.dart';
@@ -2370,7 +2371,7 @@ class _MerchantSalonScreenState extends State<MerchantSalonScreen> {
                       ClipRRect(
                         borderRadius: BorderRadius.circular(8),
                         child: Image.network(
-                          url,
+                          publicThumbnailUrl(url, width: 360),
                           width: 104,
                           height: 104,
                           fit: BoxFit.cover,
@@ -2452,7 +2453,7 @@ class _MerchantSalonScreenState extends State<MerchantSalonScreen> {
               CircleAvatar(
                 backgroundImage: authorImage.isEmpty
                     ? null
-                    : NetworkImage(authorImage),
+                    : NetworkImage(publicThumbnailUrl(authorImage, width: 240)),
                 child: authorImage.isEmpty ? const Icon(Icons.person) : null,
               ),
               const SizedBox(width: 10),
@@ -2498,7 +2499,7 @@ class _MerchantSalonScreenState extends State<MerchantSalonScreen> {
                     (url) => ClipRRect(
                       borderRadius: BorderRadius.circular(6),
                       child: Image.network(
-                        url,
+                        publicThumbnailUrl(url, width: 360),
                         width: 104,
                         height: 104,
                         fit: BoxFit.cover,
@@ -2673,7 +2674,7 @@ class _MerchantSalonScreenState extends State<MerchantSalonScreen> {
                           size: 40,
                         )
                       : Image.network(
-                          imageUrl,
+                          publicThumbnailUrl(imageUrl, width: 720),
                           width: double.infinity,
                           height: double.infinity,
                           fit: BoxFit.cover,
@@ -3255,7 +3256,7 @@ class _MerchantSalonScreenState extends State<MerchantSalonScreen> {
           if (images.isNotEmpty) ...[
             const SizedBox(height: 12),
             SizedBox(
-              height: 120,
+              height: 140,
               child: ReorderableListView.builder(
                 scrollDirection: Axis.horizontal,
                 buildDefaultDragHandles: false,
@@ -3285,7 +3286,7 @@ class _MerchantSalonScreenState extends State<MerchantSalonScreen> {
                                 child: AspectRatio(
                                   aspectRatio: aspectRatio,
                                   child: Image.network(
-                                    imageUrl,
+                                    publicThumbnailUrl(imageUrl, width: 720),
                                     fit: BoxFit.cover,
                                     errorBuilder:
                                         (context, error, stackTrace) =>
@@ -3461,7 +3462,7 @@ class _MerchantSalonScreenState extends State<MerchantSalonScreen> {
                         size: 64,
                       )
                     : Image.network(
-                        imageUrl,
+                        publicThumbnailUrl(imageUrl, width: 720),
                         fit: BoxFit.cover,
                         errorBuilder: (context, error, stackTrace) =>
                             const Icon(

@@ -1,8 +1,15 @@
 import '../../../core/network/api_client.dart';
 import '../../auth/data/merchant_session_store.dart';
+import '../../booking/data/booking_update_stream.dart';
 
 class MerchantAccountRepository {
-  final ApiClient _apiClient = ApiClient();
+  MerchantAccountRepository({
+    ApiClient? apiClient,
+    BookingUpdateStream? bookingUpdates,
+  }) : _apiClient = apiClient ?? ApiClient(),
+       _bookingUpdates = bookingUpdates ?? BookingUpdateStream.instance;
+  final ApiClient _apiClient;
+  final BookingUpdateStream _bookingUpdates;
 
   Future<Map<String, dynamic>> fetchAccount() async {
     final response = await _apiClient.request('/merchant/account');
@@ -70,6 +77,7 @@ class MerchantAccountRepository {
       user: Map<String, dynamic>.from(data['user'] as Map),
     );
     ApiClient.authToken = session.token;
+    _bookingUpdates.updateSession();
     await MerchantSessionStore().save(session);
     return session;
   }

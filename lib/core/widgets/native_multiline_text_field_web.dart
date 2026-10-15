@@ -36,9 +36,17 @@ html.TextAreaElement createNativeMultilineTextArea({
     ..style.setProperty('-webkit-user-select', 'text')
     ..style.setProperty('-webkit-touch-callout', 'default')
     ..style.touchAction = 'none';
-  if (maxLength != null) textarea.maxLength = maxLength;
+  setNativeTextAreaMaxLength(textarea, maxLength);
   if (hintText != null) textarea.placeholder = hintText;
   return textarea;
+}
+
+void setNativeTextAreaMaxLength(html.TextAreaElement textarea, int? maxLength) {
+  if (maxLength == null) {
+    textarea.attributes.remove('maxlength');
+  } else {
+    textarea.maxLength = maxLength;
+  }
 }
 
 class NativeMultilineTextField extends StatefulWidget {
@@ -110,7 +118,7 @@ class _NativeMultilineTextFieldState extends State<NativeMultilineTextField> {
   @override
   void didUpdateWidget(NativeMultilineTextField oldWidget) {
     super.didUpdateWidget(oldWidget);
-    _textarea.maxLength = widget.maxLength ?? -1;
+    setNativeTextAreaMaxLength(_textarea, widget.maxLength);
     _textarea.placeholder = widget.hintText ?? '';
     if (widget.value != oldWidget.value && _textarea.value != widget.value) {
       _textarea.value = widget.value;

@@ -1,8 +1,63 @@
 import '../../../core/network/api_client.dart';
 import '../domain/booking_order.dart';
 
+class MerchantBookingPage {
+  const MerchantBookingPage(this.orders, this.hasMore);
+  final List<BookingOrder> orders;
+  final bool hasMore;
+}
+
 class OrderRepository {
-  final ApiClient _apiClient = ApiClient();
+  OrderRepository({ApiClient? apiClient})
+    : _apiClient = apiClient ?? ApiClient();
+  final ApiClient _apiClient;
+
+  Future<MerchantBookingPage> fetchMerchantBookingPage({
+    required int page,
+    Map<String, dynamic>? filters,
+  }) async {
+    const limit = 20;
+    final response = await _apiClient.request(
+      '/merchant/bookings',
+      queryParameters: {...?filters, 'page': page, 'limit': limit},
+    );
+    final rows = response.data as List;
+    final total = int.tryParse(response.headers.value('x-total-count') ?? '');
+    return MerchantBookingPage(
+      rows
+          .map(
+            (item) =>
+                BookingOrder.fromJson(Map<String, dynamic>.from(item as Map)),
+          )
+          .toList(),
+      hasMorePages((page - 1) * limit + rows.length, rows.length, limit, total),
+    );
+  }
+
+  Future<Map<String, int>> fetchMerchantBookingCounts(
+    Map<String, dynamic> filters,
+  ) async {
+    final response = await _apiClient.request(
+      '/merchant/bookings/summary',
+      queryParameters: filters,
+    );
+    return (response.data['counts'] as Map).map(
+      (key, value) => MapEntry(key.toString(), (value as num).toInt()),
+    );
+  }
+
+  Future<List<Map<String, dynamic>>> fetchRescheduleSlots(
+    String bookingId,
+    DateTime date,
+  ) async {
+    final response = await _apiClient.request(
+      '/merchant/bookings/$bookingId/slots',
+      queryParameters: {'date': date.toIso8601String().split('T').first},
+    );
+    return (response.data as List)
+        .map((item) => Map<String, dynamic>.from(item as Map))
+        .toList();
+  }
 
   Future<List<BookingOrder>> fetchMerchantBookings({
     String? status,

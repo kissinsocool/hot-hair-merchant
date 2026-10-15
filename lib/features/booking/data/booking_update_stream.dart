@@ -6,81 +6,108 @@ import 'package:web_socket_channel/web_socket_channel.dart';
 import '../../../core/network/api_client.dart';
 
 class BookingUpdateStream {
-  BookingUpdateStream._();
+  BookingUpdateStream({WebSocketChannel Function(Uri)? connect})
+    : _connectChannel = connect ?? WebSocketChannel.connect;
 
-  static final BookingUpdateStream instance = BookingUpdateStream._();
-
-  final StreamController<Map<String, dynamic>> _controller =
-      StreamController<Map<String, dynamic>>.broadcast();
-
+  static final BookingUpdateStream instance = BookingUpdateStream();
+  final WebSocketChannel Function(Uri) _connectChannel;
+  final _controller = StreamController<Map<String, dynamic>>.broadcast();
   WebSocketChannel? _channel;
+  StreamSubscription<dynamic>? _subscription;
   Timer? _reconnectTimer;
-  bool _isConnecting = false;
+  String? _token;
   bool _isStarted = false;
 
   Stream<Map<String, dynamic>> get stream => _controller.stream;
 
   void start() {
-    if (_isStarted) return;
+    final token = ApiClient.authToken;
+    if (token == null || token.isEmpty) {
+      stop();
+      return;
+    }
+    if (_isStarted && _token == token) return;
+    stop();
+    _token = token;
     _isStarted = true;
     _connect();
   }
 
+  void updateSession() {
+    if (_isStarted) start();
+  }
+
+  void stop() {
+    _isStarted = false;
+    _token = null;
+    _reconnectTimer?.cancel();
+    _reconnectTimer = null;
+    final previous = _channel;
+    _channel = null;
+    _subscription?.cancel();
+    _subscription = null;
+    previous?.sink.close();
+  }
+
   void _connect() {
-    if (_isConnecting || _channel != null) return;
+    if (!_isStarted || _channel != null) return;
+    final token = _token;
+    if (token == null || token != ApiClient.authToken) {
+      stop();
+      return;
+    }
     const socketUrl = String.fromEnvironment(
       'WS_BASE_URL',
       defaultValue: 'wss://api.hothaircc.cn/ws',
     );
-
-    _isConnecting = true;
     try {
-      final channel = WebSocketChannel.connect(Uri.parse(socketUrl));
+      final channel = _connectChannel(Uri.parse(socketUrl));
       _channel = channel;
-      _isConnecting = false;
-
-      channel.stream.listen(
-        _handleMessage,
-        onDone: _scheduleReconnect,
-        onError: (_) => _scheduleReconnect(),
+      _subscription = channel.stream.listen(
+        (message) {
+          if (_channel != channel ||
+              _token != token ||
+              ApiClient.authToken != token ||
+              message is! String) {
+            return;
+          }
+          try {
+            final decoded = jsonDecode(message);
+            if (decoded is! Map<String, dynamic>) return;
+            if (decoded['event'] == 'auth.required') {
+              channel.sink.add(
+                jsonEncode({
+                  'event': 'authenticate',
+                  'role': 'merchant',
+                  'token': token,
+                }),
+              );
+            } else {
+              _controller.add(decoded);
+            }
+          } catch (_) {
+            // Ignore malformed server messages.
+          }
+        },
+        onDone: () => _scheduleReconnect(channel),
+        onError: (_) => _scheduleReconnect(channel),
         cancelOnError: true,
       );
     } catch (_) {
-      _isConnecting = false;
-      _scheduleReconnect();
+      _scheduleReconnect(null);
     }
   }
 
-  void _handleMessage(dynamic message) {
-    if (message is! String) return;
-
-    try {
-      final decoded = jsonDecode(message);
-      if (decoded is Map<String, dynamic>) {
-        if (decoded['event'] == 'auth.required') {
-          final token = ApiClient.authToken;
-          if (token != null && token.isNotEmpty) {
-            _channel?.sink.add(
-              jsonEncode({
-                'event': 'authenticate',
-                'role': 'merchant',
-                'token': token,
-              }),
-            );
-          }
-          return;
-        }
-        _controller.add(decoded);
-      }
-    } catch (_) {
-      // Ignore malformed socket messages from development servers.
-    }
-  }
-
-  void _scheduleReconnect() {
+  void _scheduleReconnect(WebSocketChannel? channel) {
+    if (channel != _channel) return;
     _channel = null;
+    _subscription?.cancel();
+    _subscription = null;
+    channel?.sink.close();
     if (!_isStarted || _reconnectTimer?.isActive == true) return;
-
-    _reconnectTimer = Timer(const Duration(seconds: 3), _connect);
+    _reconnectTimer = Timer(const Duration(seconds: 3), () {
+      _reconnectTimer = null;
+      _connect();
+    });
   }
 }

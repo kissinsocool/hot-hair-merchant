@@ -1,14 +1,19 @@
+import 'dart:async';
+
 import '../../../core/network/api_client.dart';
+import '../../booking/data/booking_update_stream.dart';
 import 'merchant_session_store.dart';
 
 class MerchantAuthRepository {
   MerchantAuthRepository({
     this.role = PortalRole.merchant,
     MerchantSessionStore? sessionStore,
-  }) : _sessionStore = sessionStore ?? MerchantSessionStore(role: role);
+    ApiClient? apiClient,
+  }) : _sessionStore = sessionStore ?? MerchantSessionStore(role: role),
+       _apiClient = apiClient ?? ApiClient();
 
   final PortalRole role;
-  final ApiClient _apiClient = ApiClient();
+  final ApiClient _apiClient;
   final MerchantSessionStore _sessionStore;
 
   Future<MerchantSession?> restoreSession() async {
@@ -46,13 +51,30 @@ class MerchantAuthRepository {
       token: data['token'] as String,
       user: Map<String, dynamic>.from(data['user'] as Map),
     );
+    if (role == PortalRole.merchant && ApiClient.authToken != session.token) {
+      BookingUpdateStream.instance.stop();
+    }
     ApiClient.authToken = session.token;
     await _sessionStore.save(session);
     return session;
   }
 
   Future<void> logout() async {
+    final token = ApiClient.authToken;
+    final pending = token == null
+        ? null
+        : _apiClient
+              .request(
+                role == PortalRole.admin
+                    ? '/admin/auth/logout'
+                    : '/merchant/auth/logout',
+                method: 'POST',
+              )
+              .then<void>((_) {}, onError: (Object _) {});
+    if (role == PortalRole.merchant) BookingUpdateStream.instance.stop();
     ApiClient.authToken = null;
     await _sessionStore.clear();
+    // Remote revocation must not keep the old home mounted during a timeout.
+    if (pending != null) unawaited(pending);
   }
 }
