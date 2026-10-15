@@ -45,6 +45,9 @@ void main() {
     expect(textarea.maxLength, -1);
     expect(textarea.placeholder, '请重新定位生成店铺地址，也可以手动修改');
 
+    expect(() => setNativeTextAreaMaxLength(textarea, null), returnsNormally);
+    expect(textarea.maxLength, -1);
+
     textarea.focus();
     textarea.setSelectionRange(0, 2);
     expect(textarea.selectionStart, 0);

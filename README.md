@@ -44,3 +44,23 @@ flutter build web --base-href "/admin-app/" --target lib/main_admin.dart --outpu
 Publish the build directories to `/merchant-app/` and `/admin-app/` on the same
 origin. Both portals use the same backend endpoints and separate browser
 sessions.
+
+### Merchant Web release check
+
+Before publishing the merchant portal, run `scripts/check_merchant_web.sh`.
+It runs static analysis, unit and widget tests, browser tests for Web-only code,
+a Chrome integration test of the real shop editor at phone width, and the
+merchant Web build. The integration test uses an in-memory repository and does
+not write to the production API.
+
+Install a ChromeDriver version matching the installed Chrome version, then run:
+
+```sh
+npx @puppeteer/browsers install chromedriver@stable --path /tmp/merchant-chromedriver
+CHROMEDRIVER_BIN=/path/printed/by/the/install/command/chromedriver \
+  ./scripts/check_merchant_web.sh
+```
+
+After the automated check, verify text selection and the keyboard in Safari on
+an iPhone before publishing changes to native text inputs. Chrome's phone-width
+test checks layout and editing but does not emulate iOS text selection.

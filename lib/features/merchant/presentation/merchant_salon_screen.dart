@@ -3255,7 +3255,7 @@ class _MerchantSalonScreenState extends State<MerchantSalonScreen> {
           if (images.isNotEmpty) ...[
             const SizedBox(height: 12),
             SizedBox(
-              height: 120,
+              height: 140,
               child: ReorderableListView.builder(
                 scrollDirection: Axis.horizontal,
                 buildDefaultDragHandles: false,
