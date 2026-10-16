@@ -45,7 +45,7 @@ curl --silent --fail http://127.0.0.1:4444/status >/dev/null
 
 flutter drive \
   --driver=test_driver/integration_test.dart \
-  --target=integration_test/merchant_editor_web_test.dart \
+  --target=integration_test/merchant_release_web_test.dart \
   -d web-server --browser-name=chrome --browser-dimension=390x844@1 \
   --driver-port=4444 --no-pub
 
