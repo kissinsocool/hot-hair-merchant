@@ -34,6 +34,39 @@ void main() {
     expect(changedValue, '剪发与染发');
   });
 
+  test(
+    'long descriptions grow without losing native selection or page gestures',
+    () {
+      final textarea = createNativeMultilineTextArea(
+        label: '详情页关于我们',
+        value: List.generate(20, (i) => '第$i行简介').join('\n'),
+        maxLength: 200,
+      )..style.width = '280px';
+      html.document.body!.append(textarea);
+      addTearDown(textarea.remove);
+      textarea.focus();
+      textarea.setSelectionRange(0, 4);
+
+      final height = measureNativeTextAreaHeight(textarea, 5);
+      textarea.style.height = '${height}px';
+      expect(height, greaterThan(120));
+      expect(textarea.scrollHeight, lessThanOrEqualTo(textarea.clientHeight));
+      expect(textarea.style.touchAction, 'none');
+      expect(textarea.style.overflowY, 'hidden');
+      expect(html.document.activeElement, textarea);
+      expect(textarea.selectionStart, 0);
+      expect(textarea.selectionEnd, 4);
+
+      textarea.value = '简短介绍';
+      expect(measureNativeTextAreaHeight(textarea, 5), 120);
+      textarea.value = List.filled(30, '造型设计').join();
+      final wideHeight = measureNativeTextAreaHeight(textarea, 5);
+      textarea.style.width = '100px';
+      final narrowHeight = measureNativeTextAreaHeight(textarea, 5);
+      expect(narrowHeight, greaterThan(wideHeight));
+    },
+  );
+
   test('address textarea has no length limit and supports selection', () {
     final textarea = createNativeMultilineTextArea(
       label: '店铺地址',

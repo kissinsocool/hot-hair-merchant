@@ -1336,19 +1336,32 @@ class _MerchantOrdersScreenState extends State<MerchantOrdersScreen> {
             ],
           ),
           const SizedBox(height: 12),
-          _buildInfoRow(Icons.confirmation_number, '订单号 ${order.orderNo}'),
           _buildInfoRow(
-            Icons.person,
-            '${order.userName} 预约 ${order.staffName}',
+            '指定理发师',
+            order.staffName,
+            labelStyle: const TextStyle(
+              color: AppTheme.primaryPink,
+              fontWeight: FontWeight.bold,
+            ),
+            valueStyle: const TextStyle(
+              color: AppTheme.primaryPink,
+              fontWeight: FontWeight.bold,
+            ),
           ),
-          if (order.userPhone.isNotEmpty)
-            _buildInfoRow(Icons.phone_outlined, '联系电话 ${order.userPhone}'),
-          _buildInfoRow(Icons.schedule, _dateFormat.format(order.startTime)),
           _buildInfoRow(
-            Icons.payments,
-            '${order.servicePrice} / ${order.serviceDuration}',
+            '预约时间',
+            _dateFormat.format(order.startTime),
+            valueStyle: const TextStyle(fontWeight: FontWeight.bold),
           ),
-          if (order.merchantMessage.isNotEmpty) ...[
+          _buildInfoRow('客户名称', order.userName),
+          _buildInfoRow(
+            '联系方式',
+            order.userPhone.isEmpty ? '未提供' : order.userPhone,
+          ),
+          _buildInfoRow('消费金额', order.servicePrice),
+          _buildInfoRow('订单号', order.orderNo),
+          if (order.merchantMessage.isNotEmpty &&
+              !order.merchantMessage.startsWith('您有一条')) ...[
             const SizedBox(height: 10),
             Text(
               order.merchantMessage,
@@ -1444,15 +1457,34 @@ class _MerchantOrdersScreenState extends State<MerchantOrdersScreen> {
     );
   }
 
-  Widget _buildInfoRow(IconData icon, String text) {
+  Widget _buildInfoRow(
+    String label,
+    String value, {
+    TextStyle? labelStyle,
+    TextStyle? valueStyle,
+  }) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 7),
       child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(icon, size: 17, color: Colors.grey[500]),
-          const SizedBox(width: 8),
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 16,
+              color: Colors.grey[700],
+            ).merge(labelStyle),
+          ),
+          const SizedBox(width: 16),
           Expanded(
-            child: Text(text, style: TextStyle(color: Colors.grey[700])),
+            child: Text(
+              value,
+              textAlign: TextAlign.right,
+              style: TextStyle(
+                fontSize: 16,
+                color: Colors.grey[700],
+              ).merge(valueStyle),
+            ),
           ),
         ],
       ),
@@ -1461,6 +1493,7 @@ class _MerchantOrdersScreenState extends State<MerchantOrdersScreen> {
 
   Widget _buildStatusChip(String status, String label) {
     final color = switch (status) {
+      'pending' => Colors.red,
       'accepted' => Colors.green,
       'completed' => Colors.blue,
       'canceled' => Colors.grey,
@@ -1471,7 +1504,9 @@ class _MerchantOrdersScreenState extends State<MerchantOrdersScreen> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
       decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.12),
+        color: status == 'pending'
+            ? Colors.pink.shade50
+            : color.withValues(alpha: 0.12),
         borderRadius: BorderRadius.circular(16),
       ),
       child: Text(

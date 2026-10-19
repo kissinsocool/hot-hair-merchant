@@ -26,7 +26,7 @@ html.TextAreaElement createNativeMultilineTextArea({
     ..style.border = '0'
     ..style.outline = 'none'
     ..style.resize = 'none'
-    ..style.overflowY = 'auto'
+    ..style.overflowY = 'hidden'
     ..style.backgroundColor = 'transparent'
     ..style.color = '#5b5452'
     ..style.fontSize = '16px'
@@ -47,6 +47,19 @@ void setNativeTextAreaMaxLength(html.TextAreaElement textarea, int? maxLength) {
   } else {
     textarea.maxLength = maxLength;
   }
+}
+
+// Keep native selection, but let Flutter's page own all vertical scrolling.
+double measureNativeTextAreaHeight(
+  html.TextAreaElement textarea,
+  int minLines,
+) {
+  final previousHeight = textarea.style.height;
+  textarea.style.height = '0';
+  final contentHeight = textarea.scrollHeight.toDouble();
+  textarea.style.height = previousHeight;
+  final minHeight = minLines * 24.0;
+  return contentHeight > minHeight ? contentHeight : minHeight;
 }
 
 class NativeMultilineTextField extends StatefulWidget {
@@ -79,6 +92,9 @@ class _NativeMultilineTextFieldState extends State<NativeMultilineTextField> {
   late final html.TextAreaElement _textarea;
   final List<StreamSubscription<html.Event>> _subscriptions = [];
   bool _isFocused = false;
+  late final html.ResizeObserver _resizeObserver;
+  late double _height = widget.minLines * 24.0;
+  int? _heightFrame;
 
   @override
   void initState() {
@@ -94,6 +110,7 @@ class _NativeMultilineTextFieldState extends State<NativeMultilineTextField> {
       ..add(
         _textarea.onInput.listen((_) {
           widget.onChanged(_textarea.value ?? '');
+          _scheduleHeightUpdate();
           if (mounted) setState(() {});
         }),
       )
@@ -107,6 +124,8 @@ class _NativeMultilineTextFieldState extends State<NativeMultilineTextField> {
           if (mounted) setState(() => _isFocused = false);
         }),
       );
+    _resizeObserver = html.ResizeObserver((_, _) => _scheduleHeightUpdate())
+      ..observe(_textarea);
     html.document.addEventListener('pointerdown', _blurOnOutsidePointer);
 
     ui_web.platformViewRegistry.registerViewFactory(
@@ -123,6 +142,17 @@ class _NativeMultilineTextFieldState extends State<NativeMultilineTextField> {
     if (widget.value != oldWidget.value && _textarea.value != widget.value) {
       _textarea.value = widget.value;
     }
+    _scheduleHeightUpdate();
+  }
+
+  void _scheduleHeightUpdate() {
+    if (_heightFrame != null) return;
+    _heightFrame = html.window.requestAnimationFrame((_) {
+      _heightFrame = null;
+      if (!mounted || _textarea.getBoundingClientRect().width == 0) return;
+      final height = measureNativeTextAreaHeight(_textarea, widget.minLines);
+      if (height != _height) setState(() => _height = height);
+    });
   }
 
   void _blurOnOutsidePointer(html.Event event) {
@@ -133,6 +163,8 @@ class _NativeMultilineTextFieldState extends State<NativeMultilineTextField> {
 
   @override
   void dispose() {
+    _resizeObserver.disconnect();
+    if (_heightFrame != null) html.window.cancelAnimationFrame(_heightFrame!);
     html.document.removeEventListener('pointerdown', _blurOnOutsidePointer);
     for (final subscription in _subscriptions) {
       unawaited(subscription.cancel());
@@ -165,7 +197,7 @@ class _NativeMultilineTextFieldState extends State<NativeMultilineTextField> {
           ),
         ),
         child: SizedBox(
-          height: widget.minLines * 24,
+          height: _height,
           child: HtmlElementView(viewType: _viewType),
         ),
       ),
