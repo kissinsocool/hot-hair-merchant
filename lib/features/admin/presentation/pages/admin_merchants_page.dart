@@ -327,6 +327,15 @@ class _AdminMerchantsPageState
   }
 
   Future<void> _showMerchantDialog({Map<String, dynamic>? merchant}) async {
+    final List<String> businessDistricts;
+    try {
+      businessDistricts = await repository.fetchBusinessDistricts();
+    } catch (error) {
+      showError(error, fallback: '商圈加载失败，请重试');
+      return;
+    }
+    if (!mounted) return;
+
     final isEditing = merchant != null;
     final salon = Map<String, dynamic>.from(
       (merchant?['salon'] as Map?) ?? const {},
@@ -347,6 +356,7 @@ class _AdminMerchantsPageState
         .map((tag) => tag.toString())
         .where((tag) => tag.isNotEmpty)
         .toSet();
+    var businessDistrict = salon['businessDistrict']?.toString() ?? '';
     final availableTags = <String>{...selectedTags};
     final customTagController = TextEditingController();
 
@@ -442,6 +452,23 @@ class _AdminMerchantsPageState
                     ],
                   ),
                   const SizedBox(height: 12),
+                  DropdownButtonFormField<String>(
+                    initialValue: businessDistrict,
+                    decoration: const InputDecoration(labelText: '商圈'),
+                    items: [
+                      const DropdownMenuItem(value: '', child: Text('未设置')),
+                      for (final district in {
+                        ...businessDistricts,
+                        if (businessDistrict.isNotEmpty) businessDistrict,
+                      })
+                        DropdownMenuItem(
+                          value: district,
+                          child: Text(district),
+                        ),
+                    ],
+                    onChanged: (value) => businessDistrict = value ?? '',
+                  ),
+                  const SizedBox(height: 12),
                   TextField(
                     controller: passwordController,
                     obscureText: true,
@@ -474,6 +501,7 @@ class _AdminMerchantsPageState
                       salonId: salonIdController.text.trim(),
                       deposit: depositController.text.trim(),
                       tags: tags,
+                      businessDistrict: businessDistrict,
                       password: passwordController.text,
                     );
                   } else {
@@ -483,6 +511,7 @@ class _AdminMerchantsPageState
                       salonId: salonIdController.text.trim(),
                       deposit: depositController.text.trim(),
                       tags: tags,
+                      businessDistrict: businessDistrict,
                       password: passwordController.text,
                     );
                   }
@@ -764,6 +793,11 @@ class _MerchantsTab extends StatelessWidget {
                     const SizedBox(height: 4),
                     Text(
                       '标签：${salonTags.isEmpty ? '-' : salonTags}',
+                      style: TextStyle(color: Colors.grey[700]),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      '商圈：${(salon['businessDistrict']?.toString() ?? '').isEmpty ? '-' : salon['businessDistrict']}',
                       style: TextStyle(color: Colors.grey[700]),
                     ),
                     const SizedBox(height: 4),

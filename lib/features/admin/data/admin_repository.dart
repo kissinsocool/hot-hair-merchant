@@ -53,6 +53,11 @@ class AdminRepository {
     return Map<String, dynamic>.from(response.data as Map);
   }
 
+  Future<List<String>> fetchBusinessDistricts() async {
+    final response = await _apiClient.request('/admin/business-districts');
+    return List<String>.from(response.data as List);
+  }
+
   Future<List<Map<String, dynamic>>> fetchMerchants() async {
     final data = await _apiClient.requestAllPages('/admin/merchants');
     return data.map((item) => Map<String, dynamic>.from(item as Map)).toList();
@@ -65,6 +70,7 @@ class AdminRepository {
     required String salonId,
     required String deposit,
     required List<String> tags,
+    String? businessDistrict,
   }) async {
     final response = await _apiClient.request(
       '/admin/merchants',
@@ -76,6 +82,7 @@ class AdminRepository {
         'salonId': salonId,
         'deposit': deposit,
         'tags': tags,
+        'businessDistrict': ?businessDistrict,
       },
     );
     final data = Map<String, dynamic>.from(response.data as Map);
@@ -89,6 +96,7 @@ class AdminRepository {
     required String salonId,
     required String deposit,
     required List<String> tags,
+    String? businessDistrict,
     String password = '',
   }) async {
     final response = await _apiClient.request(
@@ -100,6 +108,7 @@ class AdminRepository {
         'salonId': salonId,
         'deposit': deposit,
         'tags': tags,
+        'businessDistrict': ?businessDistrict,
         'password': password,
       },
     );
