@@ -17,7 +17,9 @@ calculateOrderAccounting(Iterable<BookingOrder> orders) {
       .where((order) => {'pending', 'accepted'}.contains(order.status))
       .toList();
   final canceledOrders = orderList
-      .where((order) => {'canceled', 'rejected'}.contains(order.status))
+      .where(
+        (order) => {'canceled', 'rejected', 'no_show'}.contains(order.status),
+      )
       .toList();
   final total = orderList.fold<double>(
     0,

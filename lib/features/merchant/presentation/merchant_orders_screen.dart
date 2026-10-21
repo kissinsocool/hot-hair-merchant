@@ -11,13 +11,14 @@ import '../../booking/data/booking_update_stream.dart';
 import '../../booking/data/order_repository.dart';
 import '../../booking/domain/booking_order.dart';
 import '../data/merchant_salon_repository.dart';
+import 'merchant_order_appeal_dialog.dart';
 
 enum _RescheduleAction { previous }
 
 const merchantOrderStatusTabs = <(String, Set<String>, Color)>[
   ('新预约待接单', {'pending'}, Colors.red),
   ('已接单', {'accepted', 'completed'}, Colors.orange),
-  ('已取消', {'canceled', 'rejected'}, Colors.grey),
+  ('已取消', {'canceled', 'rejected', 'no_show'}, Colors.grey),
 ];
 
 bool isMerchantOrderVisible(
@@ -297,6 +298,57 @@ class _MerchantOrdersScreenState extends State<MerchantOrdersScreen> {
     } finally {
       if (mounted) setState(() => _isUpdating = false);
     }
+  }
+
+  Future<void> _changeOrderStatus(BookingOrder order, String action) async {
+    final label = switch (action) {
+      'complete' => '已完成',
+      'cancel' => '用户要求取消',
+      'no_show' => '用户未到店',
+      _ => throw ArgumentError.value(action, 'action'),
+    };
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('确认更改订单状态'),
+        content: Text(
+          '确认将订单标记为“$label”？'
+          '${action == 'no_show' ? '\n此操作将计入用户爽约次数，累计3次将被拉黑。' : ''}',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('确认'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted || _isUpdating) return;
+    await _updateOrderStatus(
+      order,
+      action: action,
+      reason: action == 'complete' ? '' : label,
+      successMessage: '订单已更新：$label',
+    );
+  }
+
+  Future<void> _showOrderAppeal(BookingOrder order) async {
+    final submitted = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) =>
+          MerchantOrderAppealDialog(order: order, repository: _repository),
+    );
+    if (submitted != true || !mounted) return;
+    await _loadOrders(silent: true);
+    if (!mounted) return;
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(const SnackBar(content: Text('申诉已提交，等待平台处理')));
   }
 
   Future<void> _rescheduleOrder(BookingOrder order) async {
@@ -974,7 +1026,6 @@ class _MerchantOrdersScreenState extends State<MerchantOrdersScreen> {
           ),
         )
         .toList();
-    final pendingCount = _counts['pending'] ?? 0;
 
     return Scaffold(
       backgroundColor: AppTheme.bgCream,
@@ -1003,8 +1054,6 @@ class _MerchantOrdersScreenState extends State<MerchantOrdersScreen> {
         child: ListView(
           padding: const EdgeInsets.symmetric(vertical: 20),
           children: [
-            PageWidth(child: _buildSummary(pendingCount)),
-            const SizedBox(height: 12),
             PageWidth(
               child: LayoutBuilder(
                 builder: (context, constraints) {
@@ -1063,51 +1112,6 @@ class _MerchantOrdersScreenState extends State<MerchantOrdersScreen> {
               ),
           ],
         ),
-      ),
-    );
-  }
-
-  Widget _buildSummary(int pendingCount) {
-    return Container(
-      padding: const EdgeInsets.all(18),
-      decoration: BoxDecoration(
-        color: AppTheme.white,
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: AppTheme.accentBeige),
-      ),
-      child: Row(
-        children: [
-          Container(
-            width: 42,
-            height: 42,
-            decoration: BoxDecoration(
-              color: AppTheme.primaryPink.withValues(alpha: 0.18),
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: const Icon(
-              Icons.notifications_active,
-              color: AppTheme.primaryPink,
-            ),
-          ),
-          const SizedBox(width: 14),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  '新预约待接单 $pendingCount 单',
-                  style: const TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                    color: AppTheme.textDark,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Text('页面会自动刷新新预约申请', style: TextStyle(color: Colors.grey[600])),
-              ],
-            ),
-          ),
-        ],
       ),
     );
   }
@@ -1299,6 +1303,9 @@ class _MerchantOrdersScreenState extends State<MerchantOrdersScreen> {
   Widget _buildOrderCard(BookingOrder order) {
     final isPending = order.status == 'pending';
     final isAccepted = order.status == 'accepted';
+    final canViewReview = order.reviewed && order.review != null;
+    final canAppeal =
+        order.status == 'completed' && !order.canCorrectCompletedStatus;
 
     return Container(
       margin: const EdgeInsets.only(bottom: 14),
@@ -1368,16 +1375,66 @@ class _MerchantOrdersScreenState extends State<MerchantOrdersScreen> {
               style: TextStyle(color: Colors.grey[700], height: 1.35),
             ),
           ],
-          if (order.reviewed && order.review != null) ...[
+          if (canViewReview || canAppeal) ...[
             const SizedBox(height: 12),
-            Align(
-              alignment: Alignment.centerLeft,
-              child: OutlinedButton.icon(
-                onPressed: () => _showReviewDialog(order),
-                icon: const Icon(Icons.rate_review_outlined, size: 18),
-                label: const Text('查看评价'),
+            Row(
+              children: [
+                if (canViewReview)
+                  Flexible(
+                    child: OutlinedButton.icon(
+                      onPressed: () => _showReviewDialog(order),
+                      icon: const Icon(Icons.rate_review_outlined, size: 18),
+                      label: const Text(
+                        '查看评价',
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  ),
+                if (canViewReview && canAppeal) const SizedBox(width: 12),
+                if (canAppeal)
+                  Flexible(
+                    child: OutlinedButton.icon(
+                      onPressed: _isUpdating
+                          ? null
+                          : () => _showOrderAppeal(order),
+                      icon: const Icon(Icons.fact_check_outlined, size: 18),
+                      label: Text(
+                        order.merchantAppeal == null ? '申诉' : '查看申诉',
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+          ],
+          if (isAccepted || order.canCorrectCompletedStatus) ...[
+            const SizedBox(height: 14),
+            InputDecorator(
+              decoration: const InputDecoration(labelText: '订单状态'),
+              child: DropdownButtonHideUnderline(
+                child: DropdownButton<String>(
+                  key: ValueKey('order-status-${order.id}'),
+                  value: order.status == 'completed' ? 'complete' : null,
+                  isExpanded: true,
+                  hint: const Text('请选择订单状态'),
+                  items: const [
+                    DropdownMenuItem(value: 'complete', child: Text('已完成')),
+                    DropdownMenuItem(value: 'cancel', child: Text('用户要求取消')),
+                    DropdownMenuItem(value: 'no_show', child: Text('用户未到店')),
+                  ],
+                  onChanged: _isUpdating
+                      ? null
+                      : (action) {
+                          if (action != null &&
+                              !(order.status == 'completed' &&
+                                  action == 'complete')) {
+                            _changeOrderStatus(order, action);
+                          }
+                        },
+                ),
               ),
             ),
+            const SizedBox(height: 10),
           ],
           if (isPending) ...[
             const SizedBox(height: 14),
@@ -1498,6 +1555,7 @@ class _MerchantOrdersScreenState extends State<MerchantOrdersScreen> {
       'completed' => Colors.blue,
       'canceled' => Colors.grey,
       'rejected' => Colors.redAccent,
+      'no_show' => Colors.orange,
       _ => Colors.orange,
     };
 
@@ -1510,7 +1568,11 @@ class _MerchantOrdersScreenState extends State<MerchantOrdersScreen> {
         borderRadius: BorderRadius.circular(16),
       ),
       child: Text(
-        status == 'pending' ? '新预约待接单' : label,
+        switch (status) {
+          'pending' => '新预约待接单',
+          'no_show' => '用户未到店',
+          _ => label,
+        },
         style: TextStyle(
           color: color,
           fontSize: 12,

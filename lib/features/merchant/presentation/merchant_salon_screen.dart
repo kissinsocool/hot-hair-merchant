@@ -34,6 +34,28 @@ int? parsePriceFen(String value) {
   return yuan * 100 + (cents.isEmpty ? 0 : int.parse(cents));
 }
 
+int? parseDiscountTenths(String value) {
+  final match = RegExp(r'^(\d{1,2})(?:\.(\d))?$').firstMatch(value);
+  if (match == null) return null;
+  final tenths =
+      int.parse(match.group(1)!) * 10 + int.parse(match.group(2) ?? '0');
+  return tenths >= 1 && tenths <= 100 ? tenths : null;
+}
+
+void updateServicePrice(Map<String, dynamic> service) {
+  final original = service['originalPriceFen'];
+  final discount = service['discountTenths'];
+  service['priceFen'] =
+      original is int && discount is int && discount >= 1 && discount <= 100
+      ? (original * discount + 50) ~/ 100
+      : original;
+}
+
+void normalizeServicePricing(Map<String, dynamic> service) {
+  service['originalPriceFen'] ??= service['priceFen'];
+  updateServicePrice(service);
+}
+
 List<String> serviceImageUrls(Map<dynamic, dynamic> service) {
   final images = service['imageUrls'];
   return (images is List ? images : [service['imageUrl']])
@@ -246,6 +268,7 @@ class _MerchantSalonScreenState extends State<MerchantSalonScreen> {
         _staff = _mapList(salon['staff']);
         _posts = _mapList(salon['posts']);
         for (final service in _services) {
+          normalizeServicePricing(service);
           normalizeServiceTagIds(service);
           normalizeServicePromotionRequest(service);
           setServiceDuration(
@@ -419,6 +442,7 @@ class _MerchantSalonScreenState extends State<MerchantSalonScreen> {
         _services = _mapList(savedSalon['services']);
         _staff = _mapList(savedSalon['staff']);
         for (final service in _services) {
+          normalizeServicePricing(service);
           normalizeServiceTagIds(service);
           normalizeServicePromotionRequest(service);
         }
@@ -508,6 +532,11 @@ class _MerchantSalonScreenState extends State<MerchantSalonScreen> {
       }
       if (service['priceFen'] is! int || (service['priceFen'] as int) < 0) {
         return '请填写第${i + 1}个套餐价格';
+      }
+      final discount = service['discountTenths'];
+      if (discount != null &&
+          (discount is! int || discount < 1 || discount > 100)) {
+        return '第${i + 1}个套餐折扣须为0.1至10.0折';
       }
       if (service['durationMinutes'] is! int ||
           !_serviceDurationOptions.contains(service['durationMinutes'])) {
@@ -2190,6 +2219,7 @@ class _MerchantSalonScreenState extends State<MerchantSalonScreen> {
             }, maxLength: 10),
             _buildServiceTags(service),
             priceAndDuration,
+            _buildServiceDiscountField(service),
             NativeMultilineTextField(
               key: ObjectKey(service),
               label: '简介',
@@ -3013,7 +3043,9 @@ class _MerchantSalonScreenState extends State<MerchantSalonScreen> {
   }
 
   Widget _buildServicePriceField(Map<String, dynamic> service) {
-    final price = formatPriceFenForInput(service['priceFen']);
+    final price = formatPriceFenForInput(
+      service['originalPriceFen'] ?? service['priceFen'],
+    );
 
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
@@ -3029,11 +3061,61 @@ class _MerchantSalonScreenState extends State<MerchantSalonScreen> {
           ),
         ],
         onChanged: (value) {
-          service['priceFen'] = parsePriceFen(value);
+          service['originalPriceFen'] = parsePriceFen(value);
+          updateServicePrice(service);
         },
         decoration: InputDecoration(
-          labelText: '价格',
+          labelText: '原价',
           prefixText: '¥ ',
+          filled: true,
+          fillColor: AppTheme.white,
+          border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+          enabledBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(8),
+            borderSide: const BorderSide(color: AppTheme.accentBeige),
+          ),
+          focusedBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(8),
+            borderSide: const BorderSide(color: AppTheme.primaryPink),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildServiceDiscountField(Map<String, dynamic> service) {
+    final discount = service['discountTenths'];
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: TextFormField(
+        initialValue: discount is int ? (discount / 10).toStringAsFixed(1) : '',
+        keyboardType: const TextInputType.numberWithOptions(decimal: true),
+        autovalidateMode: AutovalidateMode.onUserInteraction,
+        inputFormatters: [
+          TextInputFormatter.withFunction(
+            (oldValue, newValue) =>
+                RegExp(r'^\d{0,2}(?:\.\d{0,1})?$').hasMatch(newValue.text)
+                ? newValue
+                : oldValue,
+          ),
+        ],
+        validator: (value) =>
+            value == null || value.isEmpty || parseDiscountTenths(value) != null
+            ? null
+            : '请输入0.1至10.0折，最多一位小数',
+        onChanged: (value) {
+          // null explicitly clears; omitted fields from released clients retain the discount.
+          service['originalPriceFen'] ??= service['priceFen'];
+          service['discountTenths'] = value.isEmpty
+              ? null
+              : parseDiscountTenths(value) ?? 0;
+          updateServicePrice(service);
+        },
+        decoration: InputDecoration(
+          labelText: '折扣（可选）',
+          suffixText: '折',
+          helperText: '如原价280、9.0折，售价252；留空按原价出售',
+          helperMaxLines: 2,
           filled: true,
           fillColor: AppTheme.white,
           border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),

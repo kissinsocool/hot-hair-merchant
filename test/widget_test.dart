@@ -690,7 +690,53 @@ void main() {
     },
   );
 
-  test('merchant service prices use priceFen as the only value', () {
+  testWidgets('原价280打9折保存252，原价回显280，清除恢复280', (tester) async {
+    final repository = _SuccessfulSalonRepository();
+    await tester.pumpWidget(
+      MaterialApp(
+        home: MerchantSalonScreen(
+          repository: repository,
+          enableRealtime: false,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('服务套餐'));
+    await tester.pumpAndSettle();
+    final price = find.byWidgetPredicate(
+      (widget) =>
+          widget is TextField &&
+          ['价格', '原价'].contains(widget.decoration?.labelText),
+    );
+    final discount = find.byWidgetPredicate(
+      (widget) =>
+          widget is TextField && widget.decoration?.labelText == '折扣（可选）',
+    );
+    await tester.ensureVisible(price);
+    await tester.enterText(price, '280');
+    await tester.ensureVisible(discount);
+    await tester.enterText(discount, '9.0');
+    await tester.tap(find.text('保存并提交审核'));
+    await tester.pump();
+    await tester.pump();
+    var saved = (repository.savedPayload!['services'] as List).single as Map;
+    expect(saved['priceFen'], 25200);
+    expect(saved['originalPriceFen'], 28000);
+    expect(saved['discountTenths'], 90);
+    expect(tester.widget<TextField>(price).controller!.text, '280');
+    await tester.ensureVisible(discount);
+    await tester.enterText(discount, '');
+    await tester.tap(find.text('保存并提交审核'));
+    await tester.pump();
+    await tester.pump();
+    saved = (repository.savedPayload!['services'] as List).single as Map;
+    expect(saved['discountTenths'], isNull);
+    expect(saved['originalPriceFen'], 28000);
+    expect(saved['priceFen'], 28000);
+    expect(tester.takeException(), isNull);
+  });
+
+  test('merchant price input preserves fen precision', () {
     expect(parsePriceFen('800'), 80000);
     expect(parsePriceFen('199.50'), 19950);
     expect(parsePriceFen(''), isNull);
@@ -1305,16 +1351,17 @@ void main() {
         'accepted',
         'canceled',
         'rejected',
+        'no_show',
       ])
         _bookingOrder(id: status, startTime: startTime, status: status),
     ]);
 
-    expect(totals.total, 3000);
+    expect(totals.total, 3600);
     expect(totals.unfinished, 1200);
-    expect(totals.canceled, 1200);
+    expect(totals.canceled, 1800);
     expect(totals.result, 600);
     expect(totals.unfinishedCount, 2);
-    expect(totals.canceledCount, 2);
+    expect(totals.canceledCount, 3);
     expect(totals.resultCount, 1);
   });
 

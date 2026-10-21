@@ -21,6 +21,9 @@ class BookingOrder {
   final String canceledBy;
   final bool reviewed;
   final Map<String, dynamic>? review;
+  final bool complained;
+  final Map<String, dynamic>? complaint;
+  final Map<String, dynamic>? merchantAppeal;
   final DateTime? completedAt;
   final int originalAmountFen;
   final String couponId;
@@ -54,6 +57,9 @@ class BookingOrder {
     this.canceledBy = '',
     this.reviewed = false,
     this.review,
+    this.complained = false,
+    this.complaint,
+    this.merchantAppeal,
     this.completedAt,
     this.originalAmountFen = 0,
     this.couponId = '',
@@ -94,6 +100,13 @@ class BookingOrder {
       completedAt: json['completedAt'] == null
           ? null
           : DateTime.parse(json['completedAt'] as String).toLocal(),
+      complained: json['complained'] as bool? ?? false,
+      complaint: json['complaint'] is Map
+          ? Map<String, dynamic>.from(json['complaint'] as Map)
+          : null,
+      merchantAppeal: json['merchantAppeal'] is Map
+          ? Map<String, dynamic>.from(json['merchantAppeal'] as Map)
+          : null,
       originalAmountFen: (json['originalAmountFen'] as num?)?.toInt() ?? 0,
       couponId: json['couponId']?.toString() ?? '',
       couponCode: json['couponCode']?.toString() ?? '',
@@ -104,4 +117,11 @@ class BookingOrder {
       updatedAt: DateTime.parse(json['updatedAt'] as String).toLocal(),
     );
   }
+
+  bool get canCorrectCompletedStatus =>
+      status == 'completed' &&
+      !reviewed &&
+      review == null &&
+      !complained &&
+      complaint == null;
 }

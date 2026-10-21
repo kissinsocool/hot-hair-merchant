@@ -130,6 +130,21 @@ class OrderRepository {
     );
   }
 
+  Future<BookingOrder> submitMerchantAppeal(
+    String bookingId, {
+    required String reason,
+    required String description,
+  }) async {
+    final response = await _apiClient.request(
+      '/merchant/bookings/$bookingId/appeal',
+      method: 'POST',
+      data: {'reason': reason, 'description': description},
+    );
+    return BookingOrder.fromJson(
+      Map<String, dynamic>.from(response.data['booking']),
+    );
+  }
+
   Future<BookingOrder> replyToReview(
     String bookingId, {
     required String reply,
