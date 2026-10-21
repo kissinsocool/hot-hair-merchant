@@ -25,6 +25,7 @@ class AdminMerchantsPage extends AdminPage {
 class _AdminMerchantsPageState
     extends AdminPageState<AdminMerchantsPage, List<Map<String, dynamic>>> {
   final _searchController = TextEditingController();
+  final _savingFeatured = <String>{};
 
   @override
   void dispose() {
@@ -49,6 +50,8 @@ class _AdminMerchantsPageState
     onReviewLicense: _reviewMerchantLicense,
     onReviewContent: _reviewMerchantContent,
     onTogglePublish: _toggleMerchantPublishStatus,
+    onToggleFeatured: _toggleMerchantFeatured,
+    savingFeatured: _savingFeatured,
     onViewLicense: _showLicenseDialog,
     onViewContent: _showContentDialog,
     onViewOrders: _showMerchantOrdersDialog,
@@ -171,6 +174,30 @@ class _AdminMerchantsPageState
       await refreshAfterMutation();
     } catch (error) {
       showError(error, fallback: '审核失败，请确认商家已提交营业执照');
+    }
+  }
+
+  Future<void> _toggleMerchantFeatured(
+    Map<String, dynamic> merchant,
+    bool isFeatured,
+  ) async {
+    final id = merchant['id'].toString();
+    if (_savingFeatured.contains(id)) return;
+    setState(() => _savingFeatured.add(id));
+    try {
+      final saved = await repository.updateMerchantFeatured(
+        id: id,
+        isFeatured: isFeatured,
+      );
+      if (!mounted) return;
+      updateData(
+        _merchants.map((item) => item['id'] == id ? saved : item).toList(),
+      );
+      widget.onChanged();
+    } catch (error) {
+      showError(error);
+    } finally {
+      if (mounted) setState(() => _savingFeatured.remove(id));
     }
   }
 
@@ -606,6 +633,8 @@ class _MerchantsTab extends StatelessWidget {
     required this.onReviewLicense,
     required this.onReviewContent,
     required this.onTogglePublish,
+    required this.onToggleFeatured,
+    required this.savingFeatured,
     required this.onViewLicense,
     required this.onViewContent,
     required this.onViewOrders,
@@ -622,6 +651,9 @@ class _MerchantsTab extends StatelessWidget {
   final void Function(Map<String, dynamic> merchant, bool approve)
   onReviewContent;
   final ValueChanged<Map<String, dynamic>> onTogglePublish;
+  final void Function(Map<String, dynamic> merchant, bool isFeatured)
+  onToggleFeatured;
+  final Set<String> savingFeatured;
   final ValueChanged<Map<String, dynamic>> onViewLicense;
   final ValueChanged<Map<String, dynamic>> onViewContent;
   final ValueChanged<Map<String, dynamic>> onViewOrders;
@@ -827,6 +859,18 @@ class _MerchantsTab extends StatelessWidget {
                     ],
                   ],
                 ),
+              ),
+              Column(
+                children: [
+                  const Text('精选'),
+                  Switch(
+                    value: salon['isFeatured'] == true,
+                    onChanged:
+                        savingFeatured.contains(merchant['id'].toString())
+                        ? null
+                        : (value) => onToggleFeatured(merchant, value),
+                  ),
+                ],
               ),
               IconButton(
                 tooltip: '编辑账号',

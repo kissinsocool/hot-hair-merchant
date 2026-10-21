@@ -163,6 +163,19 @@ class AdminRepository {
     return Map<String, dynamic>.from(data['merchant'] as Map);
   }
 
+  Future<Map<String, dynamic>> updateMerchantFeatured({
+    required String id,
+    required bool isFeatured,
+  }) async {
+    final response = await _apiClient.request(
+      '/admin/merchants/$id/featured',
+      method: 'PATCH',
+      data: {'isFeatured': isFeatured},
+    );
+    final data = Map<String, dynamic>.from(response.data as Map);
+    return Map<String, dynamic>.from(data['merchant'] as Map);
+  }
+
   Future<Map<String, dynamic>> updateMerchantPublishStatus({
     required String id,
     required bool online,
