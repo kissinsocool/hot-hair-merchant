@@ -2,7 +2,10 @@ import '../../../core/network/api_client.dart';
 import '../../booking/domain/booking_order.dart';
 
 class AdminRepository {
-  final ApiClient _apiClient = ApiClient();
+  AdminRepository({ApiClient? apiClient})
+    : _apiClient = apiClient ?? ApiClient();
+
+  final ApiClient _apiClient;
 
   Future<Map<String, dynamic>> fetchOverview() async {
     final response = await _apiClient.request('/admin/overview');
@@ -216,6 +219,35 @@ class AdminRepository {
               BookingOrder.fromJson(Map<String, dynamic>.from(item as Map)),
         )
         .toList();
+  }
+
+  Future<List<BookingOrder>> fetchNewBookings(String before) async {
+    final orders = <BookingOrder>[];
+    for (var page = 1; ; page++) {
+      final response = await _apiClient.request(
+        '/admin/new-bookings',
+        queryParameters: {'before': before, 'page': page, 'limit': 100},
+      );
+      final items = response.data as List;
+      orders.addAll(
+        items.map(
+          (item) =>
+              BookingOrder.fromJson(Map<String, dynamic>.from(item as Map)),
+        ),
+      );
+      final total = int.tryParse(response.headers.value('x-total-count') ?? '');
+      if (items.length < 100 || (total != null && orders.length >= total)) {
+        return orders;
+      }
+    }
+  }
+
+  Future<void> markNewBookingsViewed(String before) async {
+    await _apiClient.request(
+      '/admin/new-bookings/viewed',
+      method: 'POST',
+      data: {'before': before},
+    );
   }
 
   Future<List<Map<String, dynamic>>> fetchUserImages() async {

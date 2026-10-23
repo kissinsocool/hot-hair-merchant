@@ -40,11 +40,13 @@ class AdminOrdersSummaryScreen extends StatefulWidget {
     required this.orders,
     required this.merchants,
     required this.users,
+    this.title = '订单汇总',
   });
 
   final List<BookingOrder> orders;
   final List<Map<String, dynamic>> merchants;
   final List<Map<String, dynamic>> users;
+  final String title;
 
   @override
   State<AdminOrdersSummaryScreen> createState() =>
@@ -84,7 +86,7 @@ class _AdminOrdersSummaryScreenState extends State<AdminOrdersSummaryScreen> {
 
     return Scaffold(
       backgroundColor: AppTheme.bgCream,
-      appBar: AppBar(title: const Text('订单汇总')),
+      appBar: AppBar(title: Text(widget.title)),
       body: ListView(
         padding: const EdgeInsets.all(20),
         children: [
