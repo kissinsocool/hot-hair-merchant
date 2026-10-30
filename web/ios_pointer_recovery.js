@@ -9,7 +9,7 @@
 
   window.addEventListener('pointerdown', (event) => {
     if (event.pointerType !== 'touch') return;
-    if (event.target?.closest?.('[data-native-selection-field]')) return;
+    // Native textarea events also bubble into Flutter's pointer adapter.
     downTouches.set(event.pointerId, {
       clientX: event.clientX ?? 0,
       clientY: event.clientY ?? 0,
@@ -24,14 +24,13 @@
   window.addEventListener('pointercancel', release, true);
 
   const cancelAbandonedTouches = (event) => {
-    if (downTouches.size === 0) return;
-
-    const onSurface = new Set(Array.from(event.touches, (touch) => touch.identifier));
+    // Touch.identifier and PointerEvent.pointerId need not match. Wait until
+    // all fingers lift so native selection and active multi-touch stay intact.
+    if (downTouches.size === 0 || event.touches.length !== 0) return;
     const flutterView = document.querySelector('flutter-view');
     if (!flutterView) return;
 
     for (const [pointerId, lastEvent] of downTouches) {
-      if (onSurface.has(pointerId)) continue;
       downTouches.delete(pointerId);
       flutterView.dispatchEvent(new PointerEvent('pointercancel', {
         bubbles: true,

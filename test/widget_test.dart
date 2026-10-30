@@ -91,6 +91,19 @@ class _SuccessfulSalonRepository extends MerchantSalonRepository {
   }
 }
 
+class _SelectableStaffSalonRepository extends _SuccessfulSalonRepository {
+  @override
+  Future<Map<String, dynamic>> fetchSalon() async {
+    final salon = await super.fetchSalon();
+    final profile = Map<String, dynamic>.from((salon['staff'] as List).single);
+    salon['staff'] = [
+      {...profile, 'id': 'staff-1', 'name': '张三'},
+      {...profile, 'id': 'staff-2', 'name': '李四'},
+    ];
+    return salon;
+  }
+}
+
 class _EmptyDescriptionSalonRepository extends _SuccessfulSalonRepository {
   @override
   Future<Map<String, dynamic>> fetchSalon() async {
@@ -100,6 +113,19 @@ class _EmptyDescriptionSalonRepository extends _SuccessfulSalonRepository {
       'description': '',
       'fullDescription': '一二三四五六七八九十一二三四五六七八九十二一二三四',
     };
+  }
+}
+
+class _ServiceNameSalonRepository extends _SuccessfulSalonRepository {
+  _ServiceNameSalonRepository(this.name);
+
+  final String name;
+
+  @override
+  Future<Map<String, dynamic>> fetchSalon() async {
+    final salon = await super.fetchSalon();
+    ((salon['services'] as List).single as Map)['name'] = name;
+    return salon;
   }
 }
 
@@ -531,6 +557,7 @@ void main() {
     expect(maxServiceTagCount, 4);
     expect(serviceTagOptions.map((tag) => tag.id), [
       'wash_cut_blow',
+      'wash_blow',
       'color',
       'perm',
       'care',
@@ -544,6 +571,7 @@ void main() {
     ]);
     expect(serviceTagOptions.map((tag) => tag.label), [
       '洗剪吹',
+      '洗吹',
       '染发',
       '烫发',
       '护理',
@@ -689,6 +717,193 @@ void main() {
       expect(userFacingApiError(networkError), '网络连接失败，请检查网络后重试');
     },
   );
+
+  testWidgets('理发师限定显示多选并随套餐保存，关闭后隐藏', (tester) async {
+    tester.view.physicalSize = const Size(1200, 2000);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final repository = _SelectableStaffSalonRepository();
+    await tester.pumpWidget(
+      MaterialApp(
+        home: MerchantSalonScreen(
+          repository: repository,
+          enableRealtime: false,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('服务套餐'));
+    await tester.pumpAndSettle();
+    final toggle = find.widgetWithText(SwitchListTile, '理发师限定');
+    final first = find.widgetWithText(CheckboxListTile, '张三');
+    final second = find.widgetWithText(CheckboxListTile, '李四');
+    expect(first, findsNothing);
+    expect(find.text('开启后顾客预约此套餐不可选择理发师'), findsNothing);
+    await tester.ensureVisible(toggle);
+    await tester.tap(toggle);
+    await tester.pump();
+    expect(first, findsOneWidget);
+    expect(second, findsOneWidget);
+    await tester.tap(first);
+    await tester.pump();
+    await tester.tap(second);
+    await tester.pump();
+    expect(tester.widget<CheckboxListTile>(first).value, true);
+    expect(tester.widget<CheckboxListTile>(second).value, true);
+    await tester.tap(first);
+    await tester.pump();
+    expect(tester.widget<CheckboxListTile>(first).value, false);
+    expect(tester.widget<CheckboxListTile>(second).value, true);
+    await tester.tap(first);
+    await tester.pump();
+    await tester.tap(find.text('保存并提交审核'));
+    await tester.pump();
+    await tester.pump();
+    final saved = (repository.savedPayload!['services'] as List).single as Map;
+    expect(saved['staffSelectionRestricted'], true);
+    expect(saved['note'], '套餐介绍\n理发师限定');
+    expect(
+      saved['selectableStaffIds'],
+      unorderedEquals(['staff-1', 'staff-2']),
+    );
+    await tester.tap(toggle);
+    await tester.pump();
+    expect(first, findsNothing);
+    expect(second, findsNothing);
+    final introduction = find.byWidgetPredicate(
+      (widget) => widget is TextField && widget.decoration?.labelText == '简介',
+    );
+    expect(tester.widget<TextField>(introduction).controller!.text, '套餐介绍');
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('开启理发师限定保留简介、不重复追加且不能超出60字', (tester) async {
+    tester.view.physicalSize = const Size(1200, 2400);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    await tester.pumpWidget(
+      MaterialApp(
+        home: MerchantSalonScreen(
+          repository: _SuccessfulSalonRepository(),
+          enableRealtime: false,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('服务套餐'));
+    await tester.pumpAndSettle();
+    final toggle = find.widgetWithText(SwitchListTile, '理发师限定');
+    final introduction = find.byWidgetPredicate(
+      (widget) => widget is TextField && widget.decoration?.labelText == '简介',
+    );
+    final fullNote = List.filled(60, '介').join();
+    await tester.ensureVisible(introduction);
+    await tester.enterText(introduction, fullNote);
+    await tester.pump();
+    await tester.ensureVisible(toggle);
+    await tester.tap(toggle);
+    await tester.pump();
+    expect(tester.widget<SwitchListTile>(toggle).value, false);
+    expect(tester.widget<TextField>(introduction).controller!.text, fullNote);
+    expect(find.text('套餐简介不能超过60字，请先精简简介'), findsOneWidget);
+    await tester.ensureVisible(introduction);
+    await tester.enterText(introduction, '原有理发师限定说明\n理发师限定');
+    await tester.pump();
+    await tester.ensureVisible(toggle);
+    await tester.tap(toggle);
+    await tester.pump();
+    expect(tester.widget<SwitchListTile>(toggle).value, true);
+    expect(
+      tester.widget<TextField>(introduction).controller!.text,
+      '原有理发师限定说明\n理发师限定',
+    );
+    await tester.tap(toggle);
+    await tester.pump();
+    expect(
+      tester.widget<TextField>(introduction).controller!.text,
+      '原有理发师限定说明',
+    );
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('理发师限定开关默认关闭，开启后随套餐保存', (tester) async {
+    tester.view.physicalSize = const Size(1200, 2000);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final repository = _SuccessfulSalonRepository();
+    await tester.pumpWidget(
+      MaterialApp(
+        home: MerchantSalonScreen(
+          repository: repository,
+          enableRealtime: false,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('服务套餐'));
+    await tester.pumpAndSettle();
+    final toggle = find.widgetWithText(SwitchListTile, '理发师限定');
+    await tester.ensureVisible(toggle);
+    expect(tester.widget<SwitchListTile>(toggle).value, false);
+    await tester.tap(toggle);
+    await tester.pump();
+    expect(tester.widget<SwitchListTile>(toggle).value, true);
+    await tester.tap(find.text('保存并提交审核'));
+    await tester.pump();
+    await tester.pump();
+    final saved = (repository.savedPayload!['services'] as List).single as Map;
+    expect(saved['staffSelectionRestricted'], true);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('套餐名称最多输入13字并可保存', (tester) async {
+    final repository = _SuccessfulSalonRepository();
+    await tester.pumpWidget(
+      MaterialApp(
+        home: MerchantSalonScreen(
+          repository: repository,
+          enableRealtime: false,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('服务套餐'));
+    await tester.pumpAndSettle();
+    final name = find.byWidgetPredicate(
+      (widget) => widget is TextField && widget.decoration?.labelText == '套餐名称',
+    );
+    await tester.ensureVisible(name);
+    await tester.enterText(name, '一二三四五六七八九十甲乙丙丁');
+    expect(tester.widget<TextField>(name).controller!.text, '一二三四五六七八九十甲乙丙');
+    await tester.tap(find.text('保存并提交审核'));
+    await tester.pump();
+    await tester.pump();
+    final saved = (repository.savedPayload!['services'] as List).single as Map;
+    expect(saved['name'], '一二三四五六七八九十甲乙丙');
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('已有超过13字的套餐名称保存时提示修改', (tester) async {
+    final repository = _ServiceNameSalonRepository('一二三四五六七八九十甲乙丙丁');
+    await tester.pumpWidget(
+      MaterialApp(
+        home: MerchantSalonScreen(
+          repository: repository,
+          enableRealtime: false,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('保存并提交审核'));
+    await tester.pump();
+    expect(repository.savedPayload, isNull);
+    expect(find.text('第1个套餐名称不能超过13字'), findsOneWidget);
+    await tester.pump(const Duration(seconds: 3));
+    expect(tester.takeException(), isNull);
+  });
 
   testWidgets('原价280打9折保存252，原价回显280，清除恢复280', (tester) async {
     final repository = _SuccessfulSalonRepository();
@@ -892,6 +1107,112 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('套餐简介选项可勾选、取消、手动编辑并保存回显', (tester) async {
+    tester.view.physicalSize = const Size(1200, 2400);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final repository = _SuccessfulSalonRepository();
+    await tester.pumpWidget(
+      MaterialApp(
+        home: MerchantSalonScreen(
+          repository: repository,
+          enableRealtime: false,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('服务套餐'));
+    await tester.pumpAndSettle();
+
+    final first = find.widgetWithText(CheckboxListTile, '不含漂褪');
+    final second = find.widgetWithText(CheckboxListTile, '不区分长度');
+    final introduction = find.byWidgetPredicate(
+      (widget) => widget is TextField && widget.decoration?.labelText == '简介',
+    );
+    final discount = find.byWidgetPredicate(
+      (widget) =>
+          widget is TextField && widget.decoration?.labelText == '折扣（可选）',
+    );
+    final promotion = find.widgetWithText(SwitchListTile, '推广');
+    expect(
+      tester.getTopLeft(discount).dy,
+      lessThan(tester.getTopLeft(first).dy),
+    );
+    expect(
+      tester.getTopLeft(second).dy,
+      lessThan(tester.getTopLeft(introduction).dy),
+    );
+    expect(
+      tester.getTopLeft(introduction).dy,
+      lessThan(tester.getTopLeft(promotion).dy),
+    );
+    expect(tester.widget<CheckboxListTile>(first).value, false);
+    for (final option in [first, second]) {
+      await tester.ensureVisible(option);
+      await tester.tap(option);
+      await tester.pump();
+    }
+    expect(
+      tester.widget<TextField>(introduction).controller!.text,
+      '套餐介绍\n不含漂褪\n不区分长度',
+    );
+    await tester.tap(first);
+    await tester.pump();
+    expect(
+      tester.widget<TextField>(introduction).controller!.text,
+      '套餐介绍\n不区分长度',
+    );
+    await tester.enterText(introduction, '原有不含漂褪说明\n不含漂褪\n不区分长度');
+    await tester.pump();
+    expect(tester.widget<CheckboxListTile>(first).value, true);
+    await tester.tap(first);
+    await tester.pump();
+    expect(
+      tester.widget<TextField>(introduction).controller!.text,
+      '原有不含漂褪说明\n不区分长度',
+    );
+    await tester.tap(find.text('保存并提交审核'));
+    await tester.pumpAndSettle();
+    final saved = (repository.savedPayload!['services'] as List).single as Map;
+    expect(saved['note'], '原有不含漂褪说明\n不区分长度');
+    expect(tester.widget<CheckboxListTile>(first).value, false);
+    expect(tester.widget<CheckboxListTile>(second).value, true);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('勾选套餐简介选项不能超出60字或截断原文', (tester) async {
+    tester.view.physicalSize = const Size(1200, 2400);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    await tester.pumpWidget(
+      MaterialApp(
+        home: MerchantSalonScreen(
+          repository: _SuccessfulSalonRepository(),
+          enableRealtime: false,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('服务套餐'));
+    await tester.pumpAndSettle();
+    final introduction = find.byWidgetPredicate(
+      (widget) => widget is TextField && widget.decoration?.labelText == '简介',
+    );
+    final original = List.filled(60, '字').join();
+    await tester.enterText(introduction, original);
+    await tester.pump();
+    final option = find.widgetWithText(CheckboxListTile, '不含漂褪');
+    await tester.ensureVisible(option);
+    await tester.tap(option);
+    await tester.pump();
+    expect(tester.widget<CheckboxListTile>(option).value, false);
+    expect(tester.widget<TextField>(introduction).controller!.text, original);
+    expect(find.text('套餐简介不能超过60字，请先精简简介'), findsOneWidget);
+    await tester.pump(const Duration(seconds: 3));
   });
 
   testWidgets('套餐简介在窄屏和大字体下仍显示内容', (tester) async {

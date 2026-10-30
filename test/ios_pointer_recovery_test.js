@@ -79,7 +79,7 @@ test('does not cancel a touch that ended normally', () => {
   assert.equal(cancellations, 0);
 });
 
-test('leaves native selection fields entirely to the browser', () => {
+test('releases an abandoned native textarea gesture after the finger lifts', () => {
   const {flutterView, window} = createRuntime();
   let cancellations = 0;
   flutterView.addEventListener('pointercancel', () => cancellations++);
@@ -90,9 +90,43 @@ test('leaves native selection fields entirely to the browser', () => {
     pointerId: 10,
     target: {closest: (selector) => selector === '[data-native-selection-field]'},
   });
+  assert.equal(cancellations, 0, 'must preserve native selection while touching');
   window.dispatchEvent({type: 'touchend', touches: []});
 
-  assert.equal(cancellations, 0);
+  assert.equal(cancellations, 1, 'must release the pointer held by Flutter');
+  window.dispatchEvent({type: 'touchend', touches: []});
+  assert.equal(cancellations, 1, 'must not cancel the same pointer twice');
+});
+
+test('does not cancel a finger still down when touch and pointer IDs differ', () => {
+  const {flutterView, window} = createRuntime();
+  const cancellations = [];
+  flutterView.addEventListener('pointercancel', (event) => cancellations.push(event));
+  window.dispatchEvent({type: 'pointerdown', pointerType: 'touch', pointerId: 10});
+  window.dispatchEvent({type: 'pointerdown', pointerType: 'touch', pointerId: 11});
+  window.dispatchEvent({type: 'pointerup', pointerType: 'touch', pointerId: 11});
+  window.dispatchEvent({type: 'touchend', touches: [{identifier: 0}]});
+  assert.equal(cancellations.length, 0);
+  window.dispatchEvent({type: 'touchend', touches: []});
+  assert.equal(cancellations.length, 1);
+  assert.equal(cancellations[0].pointerId, 10);
+});
+
+test('recovers repeated native selection interruptions on touchcancel', () => {
+  const {flutterView, window} = createRuntime();
+  const cancellations = [];
+  flutterView.addEventListener('pointercancel', (event) => cancellations.push(event));
+  const target = {closest: () => true};
+  for (let pointerId = 1; pointerId <= 100; pointerId++) {
+    window.dispatchEvent({type: 'pointerdown', pointerType: 'touch', pointerId, target});
+    window.dispatchEvent({type: 'touchcancel', touches: []});
+    assert.equal(cancellations.length, pointerId);
+    assert.equal(cancellations.at(-1).pointerId, pointerId);
+  }
+  window.dispatchEvent({type: 'pointerdown', pointerType: 'touch', pointerId: 101, target});
+  window.dispatchEvent({type: 'pointerup', pointerType: 'touch', pointerId: 101});
+  window.dispatchEvent({type: 'touchend', touches: []});
+  assert.equal(cancellations.length, 100, 'normal input must still finish without repair');
 });
 
 test('does not install the workaround outside iOS WebKit', () => {

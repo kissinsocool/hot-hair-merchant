@@ -4,11 +4,89 @@ library;
 // ignore_for_file: avoid_web_libraries_in_flutter, deprecated_member_use
 
 import 'dart:html' as html;
+import 'dart:ui_web' as ui_web;
 
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hot_pepper_merchant/core/widgets/native_multiline_text_field_web.dart';
 
+class _TextareaRegistry extends ui_web.PlatformViewRegistry {
+  late html.TextAreaElement textarea;
+
+  @override
+  bool registerViewFactory(
+    String viewType,
+    Function viewFactory, {
+    bool isVisible = true,
+  }) {
+    textarea = viewFactory(0) as html.TextAreaElement;
+    return super.registerViewFactory(
+      viewType,
+      viewFactory,
+      isVisible: isVisible,
+    );
+  }
+}
+
 void main() {
+  testWidgets('原生输入框获得焦点时营业时间下拉框失去焦点', (tester) async {
+    final registry = _TextareaRegistry();
+    ui_web.debugOverridePlatformViewRegistry(registry);
+    addTearDown(() => ui_web.debugOverridePlatformViewRegistry(null));
+    final dropdownFocus = FocusNode();
+    addTearDown(dropdownFocus.dispose);
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: Column(
+            children: [
+              DropdownButtonFormField<String>(
+                focusNode: dropdownFocus,
+                initialValue: '09:00',
+                decoration: const InputDecoration(labelText: '营业开始时间'),
+                items: const [
+                  DropdownMenuItem(value: '09:00', child: Text('09:00')),
+                  DropdownMenuItem(value: '10:00', child: Text('10:00')),
+                ],
+                onChanged: (_) {},
+              ),
+              NativeMultilineTextField(
+                label: '店铺地址',
+                value: '测试地址',
+                onChanged: (_) {},
+                minLines: 2,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+    await tester.tap(find.byType(DropdownButtonFormField<String>));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('10:00').last);
+    await tester.pumpAndSettle();
+    expect(dropdownFocus.hasFocus, true);
+
+    // Browser widget tests do not attach platform views to the DOM.
+    final textarea = registry.textarea;
+    html.document.body!.append(textarea);
+    addTearDown(textarea.remove);
+    await tester.runAsync(() async {
+      textarea.focus();
+      await Future<void>.delayed(Duration.zero);
+    });
+    await tester.pumpAndSettle();
+    expect(html.document.activeElement, textarea);
+    expect(dropdownFocus.hasFocus, false);
+    textarea.value = '新地址';
+    textarea.dispatchEvent(html.Event('input'));
+    textarea.setSelectionRange(0, 2);
+    await tester.pump();
+    expect(html.document.activeElement, textarea);
+    expect(textarea.selectionEnd, 2);
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
   test('uses a native textarea with browser-managed selection', () {
     var changedValue = '';
     final textarea = createNativeMultilineTextArea(

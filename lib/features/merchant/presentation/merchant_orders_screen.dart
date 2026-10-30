@@ -21,6 +21,8 @@ const merchantOrderStatusTabs = <(String, Set<String>, Color)>[
   ('已取消', {'canceled', 'rejected', 'no_show'}, Colors.grey),
 ];
 
+const _acceptedOrderTabs = [('待完成', 'accepted'), ('已完成', 'completed')];
+
 bool isMerchantOrderVisible(
   BookingOrder order,
   DateTime? selectedDate,
@@ -60,6 +62,7 @@ class MerchantOrdersScreen extends StatefulWidget {
     super.key,
     this.repository,
     this.salonRepository,
+    this.onPendingOrderCountChanged,
     this.enableRealtime = const bool.fromEnvironment(
       'ENABLE_REALTIME',
       defaultValue: true,
@@ -69,12 +72,14 @@ class MerchantOrdersScreen extends StatefulWidget {
   final OrderRepository? repository;
   final MerchantSalonRepository? salonRepository;
   final bool enableRealtime;
+  final ValueChanged<int>? onPendingOrderCountChanged;
 
   @override
   State<MerchantOrdersScreen> createState() => _MerchantOrdersScreenState();
 }
 
-class _MerchantOrdersScreenState extends State<MerchantOrdersScreen> {
+class _MerchantOrdersScreenState extends State<MerchantOrdersScreen>
+    with WidgetsBindingObserver {
   late final OrderRepository _repository =
       widget.repository ?? OrderRepository();
   late final MerchantSalonRepository _salonRepository =
@@ -89,6 +94,11 @@ class _MerchantOrdersScreenState extends State<MerchantOrdersScreen> {
   bool _filterByMonth = false;
   String _selectedStaffId = '';
   int _selectedStatusTab = 0;
+  int _selectedAcceptedTab = 0;
+
+  Set<String> get _selectedStatuses => _selectedStatusTab == 1
+      ? {_acceptedOrderTabs[_selectedAcceptedTab].$2}
+      : merchantOrderStatusTabs[_selectedStatusTab].$2;
   List<BookingOrder> _orders = [];
   Map<String, int> _counts = {};
   int _ordersVersion = 0;
@@ -103,6 +113,7 @@ class _MerchantOrdersScreenState extends State<MerchantOrdersScreen> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _loadOrders();
     if (!widget.enableRealtime) return;
 
@@ -120,8 +131,14 @@ class _MerchantOrdersScreenState extends State<MerchantOrdersScreen> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _bookingUpdateSubscription?.cancel();
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) _loadOrders(silent: true);
   }
 
   Map<String, dynamic> _bookingFilters({bool withStatus = true}) {
@@ -143,8 +160,7 @@ class _MerchantOrdersScreenState extends State<MerchantOrdersScreen> {
         'includePending': 'true',
       },
       if (_selectedStaffId.isNotEmpty) 'staffId': _selectedStaffId,
-      if (withStatus)
-        'statuses': merchantOrderStatusTabs[_selectedStatusTab].$2.join(','),
+      if (withStatus) 'statuses': _selectedStatuses.join(','),
     };
   }
 
@@ -167,6 +183,9 @@ class _MerchantOrdersScreenState extends State<MerchantOrdersScreen> {
     do {
       _ordersDirty = false;
       final version = _ordersVersion;
+      final needsSalonCount =
+          widget.onPendingOrderCountChanged != null &&
+          _selectedStaffId.isNotEmpty;
       try {
         final results = await Future.wait([
           _repository.fetchMerchantBookingPage(
@@ -177,6 +196,8 @@ class _MerchantOrdersScreenState extends State<MerchantOrdersScreen> {
             _bookingFilters(withStatus: false),
           ),
           if (!_salonLoaded) _salonRepository.fetchSalon(),
+          // The navigation count covers the whole salon, regardless of staff filters.
+          if (needsSalonCount) _repository.fetchMerchantBookingCounts({}),
         ]);
         if (!mounted) return;
         if (version != _ordersVersion) continue;
@@ -187,7 +208,7 @@ class _MerchantOrdersScreenState extends State<MerchantOrdersScreen> {
           _page = 1;
           _hasMore = page.hasMore;
           _loadingMore = false;
-          if (results.length > 2) {
+          if (!_salonLoaded) {
             final salon = results[2] as Map<String, dynamic>;
             _staffOptions = (salon['staff'] as List? ?? [])
                 .map((item) => Map<String, dynamic>.from(item as Map))
@@ -202,6 +223,10 @@ class _MerchantOrdersScreenState extends State<MerchantOrdersScreen> {
           _isLoading = false;
           _errorMessage = '';
         });
+        final counts = needsSalonCount
+            ? results.last as Map<String, int>
+            : _counts;
+        widget.onPendingOrderCountChanged?.call(counts['pending'] ?? 0);
       } catch (error) {
         if (!mounted) return;
         if (version == _ordersVersion) {
@@ -1020,11 +1045,7 @@ class _MerchantOrdersScreenState extends State<MerchantOrdersScreen> {
         tab.$2.fold<int>(0, (sum, status) => sum + (_counts[status] ?? 0)),
     ];
     final filteredOrders = scopedOrders
-        .where(
-          (order) => merchantOrderStatusTabs[_selectedStatusTab].$2.contains(
-            order.status,
-          ),
-        )
+        .where((order) => _selectedStatuses.contains(order.status))
         .toList();
 
     return Scaffold(
@@ -1083,6 +1104,8 @@ class _MerchantOrdersScreenState extends State<MerchantOrdersScreen> {
             ),
             const SizedBox(height: 12),
             PageWidth(child: _buildStatusTabs(statusCounts)),
+            if (_selectedStatusTab == 1)
+              PageWidth(child: _buildAcceptedOrderTabs()),
             const SizedBox(height: 18),
             if (_isLoading)
               const Padding(
@@ -1096,7 +1119,7 @@ class _MerchantOrdersScreenState extends State<MerchantOrdersScreen> {
             else if (filteredOrders.isEmpty)
               PageWidth(
                 child: _buildEmptyState(
-                  '暂无${merchantOrderStatusTabs[_selectedStatusTab].$1}订单',
+                  '暂无${_selectedStatusTab == 1 ? _acceptedOrderTabs[_selectedAcceptedTab].$1 : merchantOrderStatusTabs[_selectedStatusTab].$1}订单',
                   '可切换日期或月份、理发师或订单状态查看其他订单',
                 ),
               )
@@ -1296,6 +1319,29 @@ class _MerchantOrdersScreenState extends State<MerchantOrdersScreen> {
               ),
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _buildAcceptedOrderTabs() {
+    return DefaultTabController(
+      length: _acceptedOrderTabs.length,
+      initialIndex: _selectedAcceptedTab,
+      child: TabBar(
+        onTap: (index) {
+          setState(() => _selectedAcceptedTab = index);
+          _loadOrders(silent: true);
+        },
+        indicator: const UnderlineTabIndicator(
+          borderSide: BorderSide(color: AppTheme.primaryPink, width: 2),
+        ),
+        indicatorSize: TabBarIndicatorSize.label,
+        labelColor: AppTheme.primaryPink,
+        unselectedLabelColor: AppTheme.textDark,
+        tabs: [
+          for (final tab in _acceptedOrderTabs)
+            Tab(text: '${tab.$1}（${_counts[tab.$2] ?? 0}）'),
+        ],
       ),
     );
   }

@@ -103,6 +103,7 @@ Future<List<Uint8List>?> cropPickedImageBatch(
 
 const serviceTagOptions = <({String id, String label})>[
   (id: 'wash_cut_blow', label: '洗剪吹'),
+  (id: 'wash_blow', label: '洗吹'),
   (id: 'color', label: '染发'),
   (id: 'perm', label: '烫发'),
   (id: 'care', label: '护理'),
@@ -542,8 +543,8 @@ class _MerchantSalonScreenState extends State<MerchantSalonScreen> {
           !_serviceDurationOptions.contains(service['durationMinutes'])) {
         return '请选择第${i + 1}个套餐时长';
       }
-      if (text(service['name']).characters.length > 10) {
-        return '第${i + 1}个套餐名称不能超过10字';
+      if (text(service['name']).characters.length > 13) {
+        return '第${i + 1}个套餐名称不能超过13字';
       }
       if (text(service['note']).characters.length > 60) {
         return '第${i + 1}个套餐简介不能超过60字';
@@ -769,6 +770,8 @@ class _MerchantSalonScreenState extends State<MerchantSalonScreen> {
         'id': '',
         'name': '',
         'promotionEnabled': false,
+        'staffSelectionRestricted': false,
+        'selectableStaffIds': <String>[],
         'tagIds': <String>[],
         'priceFen': null,
         'durationMinutes': null,
@@ -2127,31 +2130,6 @@ class _MerchantSalonScreenState extends State<MerchantSalonScreen> {
                   ? service['name'].toString()
                   : '新套餐',
               headerActions: [
-                Tooltip(
-                  message: '审核通过后展示在小程序分类推广页',
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text(switch (service['promotionReviewStatus']) {
-                        'pending' => '推广·审核中',
-                        'rejected' => '推广·已驳回',
-                        _ => '推广',
-                      }),
-                      Transform.scale(
-                        scale: 0.8,
-                        child: Switch(
-                          value: service['promotionEnabled'] == true,
-                          activeThumbColor: AppTheme.primaryPink,
-                          materialTapTargetSize:
-                              MaterialTapTargetSize.shrinkWrap,
-                          onChanged: (value) => setState(
-                            () => service['promotionEnabled'] = value,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
                 IconButton(
                   tooltip: '上移',
                   onPressed: index == 0
@@ -2216,18 +2194,122 @@ class _MerchantSalonScreenState extends State<MerchantSalonScreen> {
           children: [
             _buildTextField('套餐名称', service['name'], (value) {
               service['name'] = value;
-            }, maxLength: 10),
+            }, maxLength: 13),
             _buildServiceTags(service),
             priceAndDuration,
             _buildServiceDiscountField(service),
+            for (final option in ['不含漂褪', '不区分长度'])
+              Material(
+                type: MaterialType.transparency,
+                child: CheckboxListTile(
+                  controlAffinity: ListTileControlAffinity.leading,
+                  contentPadding: EdgeInsets.zero,
+                  dense: true,
+                  title: Text(option),
+                  value: (service['note']?.toString() ?? '')
+                      .split('\n')
+                      .any((line) => line.trim() == option),
+                  onChanged: (checked) {
+                    final note = service['note']?.toString() ?? '';
+                    final updated = checked == true
+                        ? '$note${note.isEmpty || note.endsWith('\n') ? '' : '\n'}$option'
+                        : note
+                              .split('\n')
+                              .where((line) => line.trim() != option)
+                              .join('\n');
+                    if (updated.characters.length > 60) {
+                      _showTopMessage('套餐简介不能超过60字，请先精简简介');
+                      return;
+                    }
+                    setState(() => service['note'] = updated);
+                  },
+                ),
+              ),
             NativeMultilineTextField(
               key: ObjectKey(service),
               label: '简介',
               value: service['note']?.toString() ?? '',
-              onChanged: (value) => service['note'] = value,
+              onChanged: (value) => setState(() => service['note'] = value),
               minLines: 3,
               maxLength: 60,
             ),
+            Tooltip(
+              message: '审核通过后展示在小程序分类推广页',
+              child: Material(
+                type: MaterialType.transparency,
+                child: SwitchListTile(
+                  contentPadding: EdgeInsets.zero,
+                  title: Text(switch (service['promotionReviewStatus']) {
+                    'pending' => '推广·审核中',
+                    'rejected' => '推广·已驳回',
+                    _ => '推广',
+                  }),
+                  value: service['promotionEnabled'] == true,
+                  activeThumbColor: AppTheme.primaryPink,
+                  onChanged: (value) =>
+                      setState(() => service['promotionEnabled'] = value),
+                ),
+              ),
+            ),
+            Material(
+              type: MaterialType.transparency,
+              child: SwitchListTile(
+                contentPadding: EdgeInsets.zero,
+                title: const Text('理发师限定'),
+                value: service['staffSelectionRestricted'] == true,
+                onChanged: (value) {
+                  final note = service['note']?.toString() ?? '';
+                  final hasLabel = note
+                      .split('\n')
+                      .any((line) => line.trim() == '理发师限定');
+                  final updated = value
+                      ? (hasLabel
+                            ? note
+                            : '$note${note.isEmpty || note.endsWith('\n') ? '' : '\n'}理发师限定')
+                      : note
+                            .split('\n')
+                            .where((line) => line.trim() != '理发师限定')
+                            .join('\n');
+                  if (value && updated.characters.length > 60) {
+                    _showTopMessage('套餐简介不能超过60字，请先精简简介');
+                    return;
+                  }
+                  setState(() {
+                    service['staffSelectionRestricted'] = value;
+                    service['note'] = updated;
+                  });
+                },
+              ),
+            ),
+            if (service['staffSelectionRestricted'] == true)
+              Material(
+                type: MaterialType.transparency,
+                child: Column(
+                  children: [
+                    for (final profile in _staff)
+                      if ((profile['id']?.toString() ?? '').isNotEmpty)
+                        CheckboxListTile(
+                          controlAffinity: ListTileControlAffinity.leading,
+                          contentPadding: EdgeInsets.zero,
+                          dense: true,
+                          title: Text(profile['name']?.toString() ?? ''),
+                          value: (service['selectableStaffIds'] as List? ?? [])
+                              .contains(profile['id']),
+                          onChanged: (selected) => setState(() {
+                            final ids = List<String>.from(
+                              service['selectableStaffIds'] as List? ?? [],
+                            );
+                            if (selected == true) {
+                              ids.add(profile['id'].toString());
+                            } else {
+                              ids.remove(profile['id'].toString());
+                            }
+                            service['selectableStaffIds'] = ids;
+                          }),
+                        ),
+                  ],
+                ),
+              ),
           ],
         );
 
@@ -2276,7 +2358,15 @@ class _MerchantSalonScreenState extends State<MerchantSalonScreen> {
                   icon: const Icon(Icons.arrow_downward),
                 ),
               ],
-              onDelete: () => setState(() => _staff.removeAt(index)),
+              onDelete: () => setState(() {
+                final id = profile['id'];
+                _staff.removeAt(index);
+                for (final service in _services) {
+                  service['selectableStaffIds'] = List<String>.from(
+                    service['selectableStaffIds'] as List? ?? [],
+                  )..remove(id);
+                }
+              }),
               children: [
                 _buildStaffSummaryRow(index, profile),
                 _buildAbsenceScheduler(index, profile),

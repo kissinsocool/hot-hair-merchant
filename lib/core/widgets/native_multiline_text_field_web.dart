@@ -116,6 +116,8 @@ class _NativeMultilineTextFieldState extends State<NativeMultilineTextField> {
       )
       ..add(
         _textarea.onFocus.listen((_) {
+          // Native DOM focus does not move Flutter's focus away from dropdowns.
+          FocusManager.instance.primaryFocus?.unfocus();
           if (mounted) setState(() => _isFocused = true);
         }),
       )

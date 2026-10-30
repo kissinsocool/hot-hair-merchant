@@ -62,6 +62,8 @@ Future<void> mount(WidgetTester tester, AppealRepository repository) async {
   await tester.pumpAndSettle();
   await tester.tap(find.text('已接单（1）'));
   await tester.pumpAndSettle();
+  await tester.tap(find.text('已完成（1）'));
+  await tester.pumpAndSettle();
 }
 
 void main() {

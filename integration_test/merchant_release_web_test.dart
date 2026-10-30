@@ -112,6 +112,13 @@ void main() {
     await tester.tap(find.text('服务套餐').first);
     await tester.pumpAndSettle();
     final note = _textArea('简介');
+    note.focus();
+    note.setSelectionRange(0, 3);
+    expect(note.selectionStart, 0);
+    expect(note.selectionEnd, 3);
+    final selectionStyle = note.getComputedStyle('::selection');
+    expect(selectionStyle.backgroundColor, isNot('rgba(0, 0, 0, 0)'));
+    expect(selectionStyle.backgroundColor, isNot('transparent'));
     note.value = '新套餐简介';
     note.dispatchEvent(html.Event('input'));
     await tester.pump();

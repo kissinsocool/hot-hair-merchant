@@ -1,12 +1,11 @@
-import 'dart:async';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'core/theme/app_theme.dart';
 import 'features/account/presentation/merchant_account_screen.dart';
 import 'features/auth/data/merchant_session_store.dart';
 import 'features/auth/presentation/portal_auth_gate.dart';
-import 'features/booking/data/booking_update_stream.dart';
+import 'features/booking/data/order_repository.dart';
+import 'features/merchant/data/merchant_salon_repository.dart';
 import 'features/merchant/presentation/merchant_orders_screen.dart';
 import 'features/merchant/presentation/merchant_salon_screen.dart';
 
@@ -50,11 +49,20 @@ class MerchantHomeShell extends StatefulWidget {
     required this.session,
     required this.onLogout,
     required this.onSessionChanged,
+    this.orderRepository,
+    this.salonRepository,
+    this.enableRealtime = const bool.fromEnvironment(
+      'ENABLE_REALTIME',
+      defaultValue: true,
+    ),
   });
 
   final MerchantSession session;
   final VoidCallback onLogout;
   final ValueChanged<MerchantSession> onSessionChanged;
+  final OrderRepository? orderRepository;
+  final MerchantSalonRepository? salonRepository;
+  final bool enableRealtime;
 
   @override
   State<MerchantHomeShell> createState() => _MerchantHomeShellState();
@@ -62,33 +70,26 @@ class MerchantHomeShell extends StatefulWidget {
 
 class _MerchantHomeShellState extends State<MerchantHomeShell> {
   int _selectedIndex = 0;
-  bool _hasNewOrder = false;
-  StreamSubscription<Map<String, dynamic>>? _bookingUpdateSubscription;
+  int _pendingOrderCount = 0;
 
-  @override
-  void initState() {
-    super.initState();
-    BookingUpdateStream.instance.start();
-    _bookingUpdateSubscription = BookingUpdateStream.instance.stream.listen((
-      event,
-    ) {
-      if (event['event'] != 'booking.created') return;
-      if (_selectedIndex == 1) return;
-      if (mounted) setState(() => _hasNewOrder = true);
-    });
-  }
-
-  @override
-  void dispose() {
-    _bookingUpdateSubscription?.cancel();
-    super.dispose();
+  void _updatePendingOrderCount(int count) {
+    if (!mounted || count == _pendingOrderCount) return;
+    setState(() => _pendingOrderCount = count);
   }
 
   @override
   Widget build(BuildContext context) {
     final screens = [
-      const MerchantSalonScreen(),
-      const MerchantOrdersScreen(),
+      MerchantSalonScreen(
+        repository: widget.salonRepository,
+        enableRealtime: widget.enableRealtime,
+      ),
+      MerchantOrdersScreen(
+        onPendingOrderCountChanged: _updatePendingOrderCount,
+        repository: widget.orderRepository,
+        salonRepository: widget.salonRepository,
+        enableRealtime: widget.enableRealtime,
+      ),
       MerchantAccountScreen(
         session: widget.session,
         onSessionChanged: widget.onSessionChanged,
@@ -106,11 +107,18 @@ class _MerchantHomeShellState extends State<MerchantHomeShell> {
             label: '店铺',
           ),
           NavigationDestination(
-            icon: _NavIconWithDot(
-              icon: Icons.receipt_long_outlined,
-              showDot: _hasNewOrder,
+            icon: Badge.count(
+              count: _pendingOrderCount,
+              isLabelVisible: _pendingOrderCount > 0,
+              backgroundColor: Colors.redAccent,
+              child: const Icon(Icons.receipt_long_outlined),
             ),
-            selectedIcon: const Icon(Icons.receipt_long),
+            selectedIcon: Badge.count(
+              count: _pendingOrderCount,
+              isLabelVisible: _pendingOrderCount > 0,
+              backgroundColor: Colors.redAccent,
+              child: const Icon(Icons.receipt_long),
+            ),
             label: '订单',
           ),
           const NavigationDestination(
@@ -131,40 +139,9 @@ class _MerchantHomeShellState extends State<MerchantHomeShell> {
           }
           setState(() {
             _selectedIndex = index;
-            if (index == 1) _hasNewOrder = false;
           });
         },
       ),
-    );
-  }
-}
-
-class _NavIconWithDot extends StatelessWidget {
-  const _NavIconWithDot({required this.icon, required this.showDot});
-
-  final IconData icon;
-  final bool showDot;
-
-  @override
-  Widget build(BuildContext context) {
-    return Stack(
-      clipBehavior: Clip.none,
-      children: [
-        Icon(icon),
-        if (showDot)
-          Positioned(
-            right: -2,
-            top: -2,
-            child: Container(
-              width: 8,
-              height: 8,
-              decoration: const BoxDecoration(
-                color: Colors.redAccent,
-                shape: BoxShape.circle,
-              ),
-            ),
-          ),
-      ],
     );
   }
 }

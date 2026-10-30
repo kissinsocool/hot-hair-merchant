@@ -123,7 +123,77 @@ class StatusOrdersRepository extends OrdersRepository {
   }
 }
 
+class AcceptedTabsRepository extends OrdersRepository {
+  @override
+  Future<MerchantBookingPage> fetchMerchantBookingPage({
+    required int page,
+    Map<String, dynamic>? filters,
+  }) async {
+    requests.add((page: page, filters: {...?filters}));
+    final status = filters!['statuses'].toString().split(',').first;
+    return MerchantBookingPage([order('$status-$page', status)], page == 1);
+  }
+
+  @override
+  Future<Map<String, int>> fetchMerchantBookingCounts(
+    Map<String, dynamic> filters,
+  ) async => {'pending': 1, 'accepted': 1, 'completed': 2};
+}
+
 void main() {
+  testWidgets(
+    'accepted subtabs filter and paginate separately with underline indicators',
+    (tester) async {
+      tester.view.physicalSize = const Size(390, 1400);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      final repository = AcceptedTabsRepository();
+      await tester.pumpWidget(
+        MaterialApp(
+          home: MerchantOrdersScreen(
+            repository: repository,
+            salonRepository: SalonRepository(),
+            enableRealtime: false,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('待完成（1）'), findsNothing);
+      await tester.tap(find.text('已接单（3）'));
+      await tester.pumpAndSettle();
+      expect(repository.requests.last.filters['statuses'], 'accepted');
+      expect(find.text('accepted-1'), findsOneWidget);
+      final tabBar = tester.widget<TabBar>(
+        find.ancestor(of: find.text('待完成（1）'), matching: find.byType(TabBar)),
+      );
+      expect(tabBar.indicator, isA<UnderlineTabIndicator>());
+      await tester.tap(find.text('已完成（2）'));
+      await tester.pumpAndSettle();
+      expect(repository.requests.last.page, 1);
+      expect(repository.requests.last.filters['statuses'], 'completed');
+      expect(find.text('accepted-1'), findsNothing);
+      expect(find.text('completed-1'), findsOneWidget);
+      final more = find.byKey(const ValueKey('merchant-orders-load-more'));
+      await tester.ensureVisible(more);
+      await tester.tap(more);
+      await tester.pumpAndSettle();
+      expect(repository.requests.last.page, 2);
+      expect(repository.requests.last.filters['statuses'], 'completed');
+      expect(find.text('completed-2'), findsOneWidget);
+      await tester.ensureVisible(find.text('待完成（1）'));
+      await tester.tap(find.text('待完成（1）'));
+      await tester.pumpAndSettle();
+      expect(repository.requests.last.page, 1);
+      expect(repository.requests.last.filters['statuses'], 'accepted');
+      expect(find.text('completed-2'), findsNothing);
+      await tester.tap(find.text('已取消（0）'));
+      await tester.pumpAndSettle();
+      expect(find.text('待完成（1）'), findsNothing);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
   for (final status in [
     'pending',
     'accepted',
@@ -161,6 +231,10 @@ void main() {
             find.textContaining('${merchantOrderStatusTabs[tabIndex].$1}（'),
           );
           await tester.pumpAndSettle();
+          if (status == 'completed') {
+            await tester.tap(find.textContaining('已完成（'));
+            await tester.pumpAndSettle();
+          }
         }
 
         final details = [
@@ -262,6 +336,8 @@ void main() {
           await tester.tap(find.text('已接单（1）'));
           await tester.pumpAndSettle();
           if (initialStatus == 'completed') {
+            await tester.tap(find.text('已完成（1）'));
+            await tester.pumpAndSettle();
             await tester.tap(find.byKey(const ValueKey('order-status-BK1')));
             await tester.pumpAndSettle();
             await tester.tap(find.text('已完成').hitTestable().last);
@@ -298,6 +374,11 @@ void main() {
           repository.updating!.complete();
           await tester.pumpAndSettle();
           expect(repository.booking.status, status);
+          if (action == 'complete') {
+            expect(find.text('订单号'), findsNothing);
+            await tester.tap(find.text('已完成（1）'));
+            await tester.pumpAndSettle();
+          }
           if (action != 'complete') {
             expect(find.text('订单号'), findsNothing);
             await tester.tap(find.text('已取消（1）'));
@@ -359,6 +440,9 @@ void main() {
       }
       expect(repository.updates, hasLength(2));
       expect(repository.booking.status, 'completed');
+      expect(find.text('订单号'), findsNothing);
+      await tester.tap(find.text('已完成（1）'));
+      await tester.pumpAndSettle();
       expect(find.byKey(const ValueKey('order-status-BK1')), findsOneWidget);
       expect(tester.takeException(), isNull);
     },
@@ -390,6 +474,8 @@ void main() {
       );
       await tester.pumpAndSettle();
       await tester.tap(find.textContaining('已接单（'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.textContaining('已完成（'));
       await tester.pumpAndSettle();
       expect(find.byKey(const ValueKey('order-status-BK1')), findsNothing);
       expect(find.text('申诉'), findsOneWidget);
@@ -460,10 +546,7 @@ void main() {
       first.complete(MerchantBookingPage([order('stale', 'pending')], false));
       await tester.pumpAndSettle();
       expect(repository.requests.length, 2);
-      expect(
-        repository.requests.last.filters['statuses'],
-        'accepted,completed',
-      );
+      expect(repository.requests.last.filters['statuses'], 'accepted');
       expect(find.textContaining('顾客stale'), findsNothing);
       expect(find.text('已接单（1）'), findsOneWidget);
     },

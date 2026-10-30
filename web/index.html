@@ -30,6 +30,13 @@
 
   <title>hot_pepper_merchant</title>
   <link rel="manifest" href="manifest.json">
+  <style>
+    /* Restore native selection hidden by Flutter's global textarea styles. */
+    textarea[data-native-selection-field]::selection {
+      background-color: Highlight;
+      color: HighlightText;
+    }
+  </style>
 </head>
 <body>
   <!--

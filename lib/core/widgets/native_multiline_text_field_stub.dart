@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-class NativeMultilineTextField extends StatelessWidget {
+class NativeMultilineTextField extends StatefulWidget {
   const NativeMultilineTextField({
     super.key,
     required this.label,
@@ -19,16 +19,41 @@ class NativeMultilineTextField extends StatelessWidget {
   final String? hintText;
 
   @override
+  State<NativeMultilineTextField> createState() =>
+      _NativeMultilineTextFieldState();
+}
+
+class _NativeMultilineTextFieldState extends State<NativeMultilineTextField> {
+  late final _controller = TextEditingController(text: widget.value);
+
+  @override
+  void didUpdateWidget(NativeMultilineTextField oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (_controller.text != widget.value) {
+      _controller.text = widget.value;
+    }
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
       child: TextFormField(
-        initialValue: value,
-        minLines: minLines,
-        maxLines: minLines + 2,
-        maxLength: maxLength,
-        onChanged: onChanged,
-        decoration: InputDecoration(labelText: label, hintText: hintText),
+        controller: _controller,
+        minLines: widget.minLines,
+        maxLines: widget.minLines + 2,
+        maxLength: widget.maxLength,
+        onChanged: widget.onChanged,
+        decoration: InputDecoration(
+          labelText: widget.label,
+          hintText: widget.hintText,
+        ),
       ),
     );
   }
