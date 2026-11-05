@@ -141,6 +141,59 @@ class AcceptedTabsRepository extends OrdersRepository {
 }
 
 void main() {
+  for (final source in ['automatic', 'merchant', '']) {
+    testWidgets(
+      'completion source $source appears only in the lower completion message',
+      (tester) async {
+        tester.view.physicalSize = const Size(320, 1200);
+        tester.view.devicePixelRatio = 1;
+        addTearDown(tester.view.resetPhysicalSize);
+        addTearDown(tester.view.resetDevicePixelRatio);
+        final repository = StatusOrdersRepository()
+          ..booking = order(
+            'BK1',
+            'completed',
+            feedback: {
+              'completionSource': source,
+              'statusLabel': '已完成',
+              'merchantMessage': '订单已完成。',
+            },
+          );
+        await tester.pumpWidget(
+          MaterialApp(
+            home: MerchantOrdersScreen(
+              repository: repository,
+              salonRepository: SalonRepository(),
+              enableRealtime: false,
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('已接单（1）'));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('已完成（1）'));
+        await tester.pumpAndSettle();
+        expect(find.text('完成方式'), findsNothing);
+        expect(
+          find.byWidgetPredicate(
+            (widget) =>
+                widget is Text &&
+                widget.data == '已完成' &&
+                widget.style?.fontSize == 12,
+          ),
+          findsOneWidget,
+        );
+        expect(
+          find.text(
+            source == 'automatic' ? '订单已完成（系统自动）。如实际未到店，请及时更正订单状态。' : '订单已完成。',
+          ),
+          findsOneWidget,
+        );
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
+
   testWidgets(
     'accepted subtabs filter and paginate separately with underline indicators',
     (tester) async {

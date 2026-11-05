@@ -1413,13 +1413,14 @@ class _MerchantOrdersScreenState extends State<MerchantOrdersScreen>
           ),
           _buildInfoRow('消费金额', order.servicePrice),
           _buildInfoRow('订单号', order.orderNo),
-          if (order.status == 'completed')
-            _buildInfoRow('完成方式', order.completionSourceText),
           if (order.merchantMessage.isNotEmpty &&
               !order.merchantMessage.startsWith('您有一条')) ...[
             const SizedBox(height: 10),
             Text(
-              order.merchantMessage,
+              order.status == 'completed' &&
+                      order.completionSource == 'automatic'
+                  ? '订单已完成（系统自动）。如实际未到店，请及时更正订单状态。'
+                  : order.merchantMessage,
               style: TextStyle(color: Colors.grey[700], height: 1.35),
             ),
           ],

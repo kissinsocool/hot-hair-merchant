@@ -18,20 +18,20 @@ void main() {
       'createdAt': '2030-01-01T00:00:00Z',
       'updatedAt': '2030-01-01T02:00:00Z',
     };
-    expect(BookingOrder.fromJson(json).completionSourceText, '完成来源未记录');
+    expect(BookingOrder.fromJson(json).completionSource, '');
     expect(
       BookingOrder.fromJson({
         ...json,
         'completionSource': 'automatic',
-      }).completionSourceText,
-      '系统自动完成',
+      }).completionSource,
+      'automatic',
     );
     final manual = BookingOrder.fromJson({
       ...json,
       'completionSource': 'merchant',
       'completedAt': '2030-01-01T02:00:00Z',
     });
-    expect(manual.completionSourceText, '商家确认完成');
+    expect(manual.completionSource, 'merchant');
     expect(manual.completedAt, isNotNull);
     expect(manual.canCorrectCompletedStatus, isTrue);
     expect(

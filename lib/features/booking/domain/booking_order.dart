@@ -121,12 +121,6 @@ class BookingOrder {
     );
   }
 
-  String get completionSourceText => switch (completionSource) {
-    'merchant' => '商家确认完成',
-    'automatic' => '系统自动完成',
-    _ => '完成来源未记录',
-  };
-
   bool get canCorrectCompletedStatus =>
       status == 'completed' &&
       !reviewed &&
