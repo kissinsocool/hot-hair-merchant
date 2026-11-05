@@ -1413,6 +1413,8 @@ class _MerchantOrdersScreenState extends State<MerchantOrdersScreen>
           ),
           _buildInfoRow('消费金额', order.servicePrice),
           _buildInfoRow('订单号', order.orderNo),
+          if (order.status == 'completed')
+            _buildInfoRow('完成方式', order.completionSourceText),
           if (order.merchantMessage.isNotEmpty &&
               !order.merchantMessage.startsWith('您有一条')) ...[
             const SizedBox(height: 10),

@@ -25,6 +25,7 @@ class BookingOrder {
   final Map<String, dynamic>? complaint;
   final Map<String, dynamic>? merchantAppeal;
   final DateTime? completedAt;
+  final String completionSource;
   final int originalAmountFen;
   final String couponId;
   final String couponCode;
@@ -61,6 +62,7 @@ class BookingOrder {
     this.complaint,
     this.merchantAppeal,
     this.completedAt,
+    this.completionSource = '',
     this.originalAmountFen = 0,
     this.couponId = '',
     this.couponCode = '',
@@ -97,6 +99,7 @@ class BookingOrder {
       review: json['review'] is Map
           ? Map<String, dynamic>.from(json['review'] as Map)
           : null,
+      completionSource: json['completionSource']?.toString() ?? '',
       completedAt: json['completedAt'] == null
           ? null
           : DateTime.parse(json['completedAt'] as String).toLocal(),
@@ -117,6 +120,12 @@ class BookingOrder {
       updatedAt: DateTime.parse(json['updatedAt'] as String).toLocal(),
     );
   }
+
+  String get completionSourceText => switch (completionSource) {
+    'merchant' => '商家确认完成',
+    'automatic' => '系统自动完成',
+    _ => '完成来源未记录',
+  };
 
   bool get canCorrectCompletedStatus =>
       status == 'completed' &&

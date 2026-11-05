@@ -39,7 +39,7 @@ class _AdminComplaintsPageState
   >
   loadData() async {
     final results = await Future.wait([
-      repository.fetchUserImages(),
+      repository.fetchUserComplaints(),
       repository.fetchUsers(),
       repository.fetchBookingAppeals(),
     ]);
@@ -52,8 +52,12 @@ class _AdminComplaintsPageState
     users: data!.users,
     appeals: data!.appeals,
     onHandle: _handleAppeal,
+    onHandleComplaint: (item) => _handleAppeal(item, userComplaint: true),
   );
-  Future<void> _handleAppeal(Map<String, dynamic> appeal) async {
+  Future<void> _handleAppeal(
+    Map<String, dynamic> appeal, {
+    bool userComplaint = false,
+  }) async {
     final form = GlobalKey<FormState>();
     var response = '';
     String? decision;
@@ -66,7 +70,9 @@ class _AdminComplaintsPageState
         builder: (context, setDialogState) => PopScope(
           canPop: !saving,
           child: AlertDialog(
-            title: Text('处理订单申诉 · ${appeal['bookingId']}'),
+            title: Text(
+              '${userComplaint ? '处理用户问题' : '处理订单申诉'} · ${appeal['bookingId']}',
+            ),
             content: SizedBox(
               width: 460,
               child: SingleChildScrollView(
@@ -77,27 +83,43 @@ class _AdminComplaintsPageState
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        '申诉类型：${appeal['reason'] == 'no_show' ? '用户未到店' : '其他情况'}',
+                        userComplaint
+                            ? '问题类型：${switch (appeal['reason']) {
+                                'not_arrived' => '未到店',
+                                'service_incomplete' => '服务未完成',
+                                _ => '其他问题',
+                              }}'
+                            : '申诉类型：${appeal['reason'] == 'no_show' ? '用户未到店' : '其他情况'}',
                       ),
                       const SizedBox(height: 12),
-                      Text(appeal['description']?.toString() ?? ''),
-                      const SizedBox(height: 16),
-                      DropdownButtonFormField<String>(
-                        initialValue: decision,
-                        decoration: const InputDecoration(labelText: '审核结果'),
-                        items: const [
-                          DropdownMenuItem(
-                            value: 'approved',
-                            child: Text('审核通过'),
-                          ),
-                          DropdownMenuItem(
-                            value: 'rejected',
-                            child: Text('未通过'),
-                          ),
-                        ],
-                        onChanged: saving ? null : (value) => decision = value,
-                        validator: (value) => value == null ? '请选择审核结果' : null,
+                      Text(
+                        (userComplaint
+                                    ? appeal['content']
+                                    : appeal['description'])
+                                ?.toString() ??
+                            '',
                       ),
+                      const SizedBox(height: 16),
+                      if (!userComplaint)
+                        DropdownButtonFormField<String>(
+                          initialValue: decision,
+                          decoration: const InputDecoration(labelText: '审核结果'),
+                          items: const [
+                            DropdownMenuItem(
+                              value: 'approved',
+                              child: Text('审核通过'),
+                            ),
+                            DropdownMenuItem(
+                              value: 'rejected',
+                              child: Text('未通过'),
+                            ),
+                          ],
+                          onChanged: saving
+                              ? null
+                              : (value) => decision = value,
+                          validator: (value) =>
+                              value == null ? '请选择审核结果' : null,
+                        ),
                       const SizedBox(height: 16),
                       TextFormField(
                         enabled: !saving,
@@ -138,11 +160,18 @@ class _AdminComplaintsPageState
                           error = null;
                         });
                         try {
-                          await repository.handleBookingAppeal(
-                            appeal['bookingId'].toString(),
-                            response.trim(),
-                            decision: decision!,
-                          );
+                          if (userComplaint) {
+                            await repository.handleUserComplaint(
+                              appeal['bookingId'].toString(),
+                              response.trim(),
+                            );
+                          } else {
+                            await repository.handleBookingAppeal(
+                              appeal['bookingId'].toString(),
+                              response.trim(),
+                              decision: decision!,
+                            );
+                          }
                           if (dialogContext.mounted) {
                             Navigator.pop(dialogContext, true);
                           }
@@ -179,12 +208,14 @@ class _ComplaintsTab extends StatelessWidget {
     required this.users,
     required this.appeals,
     required this.onHandle,
+    required this.onHandleComplaint,
   });
 
   final List<Map<String, dynamic>> items;
   final List<Map<String, dynamic>> users;
   final List<Map<String, dynamic>> appeals;
   final ValueChanged<Map<String, dynamic>> onHandle;
+  final ValueChanged<Map<String, dynamic>> onHandleComplaint;
 
   @override
   Widget build(BuildContext context) {
@@ -226,6 +257,10 @@ class _ComplaintsTab extends StatelessWidget {
                               DataColumn(label: Text('投诉时间')),
                               DataColumn(label: Text('关联商家')),
                               DataColumn(label: Text('用户电话')),
+                              DataColumn(label: Text('完成方式')),
+                              DataColumn(label: Text('处理状态')),
+                              DataColumn(label: Text('处理意见')),
+                              DataColumn(label: Text('操作')),
                             ],
                             rows: [
                               for (final item in complaints)
@@ -257,6 +292,37 @@ class _ComplaintsTab extends StatelessWidget {
                                       ),
                                     ),
                                     DataCell(Text(_userPhone(item['userId']))),
+                                    DataCell(
+                                      Text(switch (item['completionSource']) {
+                                        'automatic' => '系统自动完成',
+                                        'merchant' => '商家确认完成',
+                                        _ => '完成来源未记录',
+                                      }),
+                                    ),
+                                    DataCell(
+                                      Text(
+                                        item['handlingStatus'] == 'handled'
+                                            ? '已处理'
+                                            : '待处理',
+                                      ),
+                                    ),
+                                    DataCell(
+                                      SizedBox(
+                                        width: 240,
+                                        child: Text(
+                                          item['response']?.toString() ?? '',
+                                        ),
+                                      ),
+                                    ),
+                                    DataCell(
+                                      item['handlingStatus'] == 'handled'
+                                          ? const Text('已处理')
+                                          : TextButton(
+                                              onPressed: () =>
+                                                  onHandleComplaint(item),
+                                              child: const Text('处理问题'),
+                                            ),
+                                    ),
                                   ],
                                 ),
                             ],

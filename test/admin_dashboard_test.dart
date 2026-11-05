@@ -16,6 +16,7 @@ class _AdminRepository extends AdminRepository {
   List<Map<String, dynamic>> appeals = [];
   List<Map<String, dynamic>> images = [];
   Object? appealError;
+  Object? complaintError;
 
   @override
   Future<Map<String, dynamic>> fetchOverview() async {
@@ -59,6 +60,21 @@ class _AdminRepository extends AdminRepository {
   Future<List<Map<String, dynamic>>> fetchUserImages() async {
     calls.add('images');
     return images;
+  }
+
+  @override
+  Future<List<Map<String, dynamic>>> fetchUserComplaints() async {
+    calls.add('complaints');
+    return images.where((item) => item['type'] == 'complaint').toList();
+  }
+
+  @override
+  Future<void> handleUserComplaint(String bookingId, String response) async {
+    calls.add('handle-complaint');
+    if (complaintError != null) throw complaintError!;
+    images = [
+      {...images.single, 'handlingStatus': 'handled', 'response': response},
+    ];
   }
 
   @override
@@ -138,6 +154,46 @@ Future<void> _mount(
 }
 
 void main() {
+  testWidgets(
+    'user complaint shows saved response and preserves text after failed handling',
+    (tester) async {
+      final repository = _AdminRepository()
+        ..complaintError = Exception('处理失败，请重试')
+        ..images = [
+          {
+            'type': 'complaint',
+            'bookingId': 'BK-user',
+            'reason': 'not_arrived',
+            'content': '没有到店',
+          },
+        ];
+      await _mount(tester, repository);
+      await tester.pumpAndSettle();
+      await _open(tester, '投诉管理');
+      final handle = find.text('处理问题');
+      await tester.ensureVisible(handle);
+      await tester.tap(handle);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('提交处理意见'));
+      await tester.pumpAndSettle();
+      expect(find.text('请填写处理意见'), findsOneWidget);
+      await tester.enterText(find.byType(TextFormField), '已联系双方核实，记录处理结论');
+      await tester.tap(find.text('提交处理意见'));
+      await tester.pumpAndSettle();
+      expect(find.text('已联系双方核实，记录处理结论'), findsOneWidget);
+      expect(
+        repository.calls.where((call) => call == 'handle-complaint'),
+        hasLength(1),
+      );
+      repository.complaintError = null;
+      await tester.tap(find.text('提交处理意见'));
+      await tester.pumpAndSettle();
+      expect(find.text('已联系双方核实，记录处理结论'), findsOneWidget);
+      expect(find.text('处理问题'), findsNothing);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
   testWidgets(
     'complaints tabs switch between separate user and merchant lists',
     (tester) async {
@@ -334,7 +390,7 @@ void main() {
         'images',
         'posts',
         'merchants',
-        'images',
+        'complaints',
         'users',
         'appeals',
         'support',

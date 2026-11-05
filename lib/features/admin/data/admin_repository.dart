@@ -258,6 +258,19 @@ class AdminRepository {
     return data.map((item) => Map<String, dynamic>.from(item as Map)).toList();
   }
 
+  Future<List<Map<String, dynamic>>> fetchUserComplaints() async {
+    final data = await _apiClient.requestAllPages('/admin/complaints');
+    return data.map((item) => Map<String, dynamic>.from(item as Map)).toList();
+  }
+
+  Future<void> handleUserComplaint(String bookingId, String response) async {
+    await _apiClient.request(
+      '/admin/complaints/${Uri.encodeComponent(bookingId)}',
+      method: 'PATCH',
+      data: {'response': response},
+    );
+  }
+
   Future<List<Map<String, dynamic>>> fetchBookingAppeals() async {
     final data = await _apiClient.requestAllPages('/admin/booking-appeals');
     return data.map((item) => Map<String, dynamic>.from(item as Map)).toList();
