@@ -24,16 +24,13 @@ class AdminRepository {
     String? fileName,
     String? base64Data,
   }) async {
+    if (base64Data != null && base64Data.isNotEmpty) {
+      imageUrl = await _uploadImage(fileName ?? 'ad.jpeg', base64Data);
+    }
     final response = await _apiClient.request(
       '/admin/ad',
       method: 'PATCH',
-      data: {
-        'imageUrl': imageUrl,
-        'link': link,
-        'enabled': enabled,
-        'fileName': ?fileName,
-        'data': ?base64Data,
-      },
+      data: {'imageUrl': imageUrl, 'link': link, 'enabled': enabled},
     );
     return Map<String, dynamic>.from(response.data as Map);
   }
@@ -48,12 +45,32 @@ class AdminRepository {
   Future<Map<String, dynamic>> saveCouponCampaign(
     Map<String, dynamic> campaign,
   ) async {
+    final payload = Map<String, dynamic>.from(campaign);
+    final imageData = payload.remove('promotionImageData') as String?;
+    final fileName = payload.remove('promotionImageFileName') as String?;
+    if (imageData != null && imageData.isNotEmpty) {
+      payload['promotionImageUrl'] = await _uploadImage(
+        fileName ?? 'coupon-promotion.jpeg',
+        imageData,
+      );
+    }
     final response = await _apiClient.request(
       '/admin/campaigns/new-user-registration',
       method: 'PATCH',
-      data: campaign,
+      data: payload,
     );
     return Map<String, dynamic>.from(response.data as Map);
+  }
+
+  Future<String> _uploadImage(String fileName, String base64Data) async {
+    final uploads = await _apiClient.uploadBase64Images(
+      type: 'public',
+      signingPath: '/admin/uploads/sign',
+      images: [(fileName: fileName, base64Data: base64Data)],
+    );
+    final url = uploads.single['url'] as String?;
+    if (url == null || url.isEmpty) throw StateError('图片上传地址无效');
+    return url;
   }
 
   Future<List<String>> fetchBusinessDistricts() async {

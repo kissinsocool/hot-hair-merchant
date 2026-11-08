@@ -127,6 +127,7 @@ class ApiClient {
   Future<List<Map<String, dynamic>>> uploadBase64Images({
     required String type,
     required List<({String fileName, String base64Data})> images,
+    String signingPath = '/merchant/uploads/sign',
     CancelToken? cancelToken,
   }) async {
     if (images.isEmpty) return [];
@@ -144,7 +145,7 @@ class ApiClient {
     }).toList();
 
     final response = await request(
-      '/merchant/uploads/sign',
+      signingPath,
       cancelToken: cancelToken,
       method: 'POST',
       data: {
