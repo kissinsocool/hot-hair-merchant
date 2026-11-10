@@ -6,6 +6,7 @@ import 'package:hot_pepper_merchant/features/admin/presentation/pages/admin_merc
 class _Repository extends AdminRepository {
   String district = '';
   String? savedDistrict;
+  String? savedInitialPassword;
   List<String> districts = ['国贸', '林肯公园', '龙湖天街'];
   Object? districtsError;
 
@@ -58,6 +59,7 @@ class _Repository extends AdminRepository {
     required List<String> tags,
     String? businessDistrict,
   }) async {
+    savedInitialPassword = password;
     savedDistrict = businessDistrict;
     district = businessDistrict ?? district;
     return {};
@@ -173,10 +175,10 @@ void main() {
     await tester.tap(find.text('新增商家账号'));
     await tester.pumpAndSettle();
     await _selectDistrict(tester, '庞各庄');
-    await _enterInitialPassword(tester, 'fixture-pass7');
     await tester.tap(find.text('保存'));
     await tester.pumpAndSettle();
     expect(repository.savedDistrict, '庞各庄');
+    expect(repository.savedInitialPassword, '123456');
     repository.districts = ['后端新增商圈'];
     await tester.tap(find.byTooltip('编辑账号'));
     await tester.pumpAndSettle();

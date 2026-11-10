@@ -377,7 +377,10 @@ class _AdminMerchantsPageState
     final depositController = TextEditingController(
       text: _merchantDeposit(merchant ?? const {}),
     );
-    final passwordController = TextEditingController();
+    const defaultInitialPassword = '123456';
+    final passwordController = TextEditingController(
+      text: isEditing ? '' : defaultInitialPassword,
+    );
     final selectedTags = ((salon['tags'] as List?) ?? const [])
         .map((tag) => tag.toString())
         .where((tag) => tag.isNotEmpty)
@@ -504,7 +507,9 @@ class _AdminMerchantsPageState
                     maxLength: 128,
                     decoration: InputDecoration(
                       labelText: isEditing ? '重置密码（可不填）' : '初始密码',
-                      helperText: newPasswordRule,
+                      helperText: isEditing
+                          ? newPasswordRule
+                          : '默认 $defaultInitialPassword，自定义密码须符合强度要求',
                     ),
                   ),
                 ],
@@ -527,7 +532,10 @@ class _AdminMerchantsPageState
                     throw Exception('请填写店铺 ID');
                   }
                   final password = passwordController.text;
-                  if ((!isEditing || password.isNotEmpty) &&
+                  final usesDefault =
+                      !isEditing && password == defaultInitialPassword;
+                  if (!usesDefault &&
+                      (!isEditing || password.isNotEmpty) &&
                       !isValidNewPassword(password)) {
                     throw Exception(newPasswordRule);
                   }
