@@ -59,6 +59,8 @@ class _AdminComplaintsPageState
     bool userComplaint = false,
   }) async {
     final form = GlobalKey<FormState>();
+    final noShowDispute =
+        userComplaint && appeal['reason'] == 'no_show_dispute';
     var response = '';
     String? decision;
     var saving = false;
@@ -85,6 +87,7 @@ class _AdminComplaintsPageState
                       Text(
                         userComplaint
                             ? '问题类型：${switch (appeal['reason']) {
+                                'no_show_dispute' => '对未到店判定有异议',
                                 'not_arrived' => '未到店',
                                 'service_incomplete' => '服务未完成',
                                 _ => '其他问题',
@@ -100,18 +103,20 @@ class _AdminComplaintsPageState
                             '',
                       ),
                       const SizedBox(height: 16),
-                      if (!userComplaint)
+                      if (!userComplaint || noShowDispute)
                         DropdownButtonFormField<String>(
                           initialValue: decision,
                           decoration: const InputDecoration(labelText: '审核结果'),
-                          items: const [
+                          items: [
                             DropdownMenuItem(
                               value: 'approved',
-                              child: Text('审核通过'),
+                              child: Text(
+                                noShowDispute ? '撤销本次爽约并扣回计次' : '审核通过',
+                              ),
                             ),
                             DropdownMenuItem(
                               value: 'rejected',
-                              child: Text('未通过'),
+                              child: Text(noShowDispute ? '维持爽约判定' : '未通过'),
                             ),
                           ],
                           onChanged: saving
@@ -164,6 +169,7 @@ class _AdminComplaintsPageState
                             await repository.handleUserComplaint(
                               appeal['bookingId'].toString(),
                               response.trim(),
+                              decision: noShowDispute ? decision : null,
                             );
                           } else {
                             await repository.handleBookingAppeal(
@@ -300,11 +306,14 @@ class _ComplaintsTab extends StatelessWidget {
                                       }),
                                     ),
                                     DataCell(
-                                      Text(
-                                        item['handlingStatus'] == 'handled'
-                                            ? '已处理'
-                                            : '待处理',
-                                      ),
+                                      Text(switch (item['decision']) {
+                                        'approved' => '爽约已撤销',
+                                        'rejected' => '维持爽约判定',
+                                        _ =>
+                                          item['handlingStatus'] == 'handled'
+                                              ? '已处理'
+                                              : '待处理',
+                                      }),
                                     ),
                                     DataCell(
                                       SizedBox(
@@ -320,7 +329,12 @@ class _ComplaintsTab extends StatelessWidget {
                                           : TextButton(
                                               onPressed: () =>
                                                   onHandleComplaint(item),
-                                              child: const Text('处理问题'),
+                                              child: Text(
+                                                item['reason'] ==
+                                                        'no_show_dispute'
+                                                    ? '处理爽约异议'
+                                                    : '处理问题',
+                                              ),
                                             ),
                                     ),
                                   ],

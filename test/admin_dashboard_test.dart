@@ -69,11 +69,20 @@ class _AdminRepository extends AdminRepository {
   }
 
   @override
-  Future<void> handleUserComplaint(String bookingId, String response) async {
+  Future<void> handleUserComplaint(
+    String bookingId,
+    String response, {
+    String? decision,
+  }) async {
     calls.add('handle-complaint');
     if (complaintError != null) throw complaintError!;
     images = [
-      {...images.single, 'handlingStatus': 'handled', 'response': response},
+      {
+        ...images.single,
+        'handlingStatus': 'handled',
+        'response': response,
+        'decision': ?decision,
+      },
     ];
   }
 
@@ -193,6 +202,39 @@ void main() {
       expect(tester.takeException(), isNull);
     },
   );
+
+  testWidgets('no-show dispute requires a decision and displays the reversal', (
+    tester,
+  ) async {
+    final repository = _AdminRepository()
+      ..images = [
+        {
+          'type': 'complaint',
+          'bookingId': 'BK-dispute',
+          'reason': 'no_show_dispute',
+          'content': '我已到店',
+        },
+      ];
+    await _mount(tester, repository);
+    await tester.pumpAndSettle();
+    await _open(tester, '投诉管理');
+    final handle = find.text('处理爽约异议');
+    await tester.ensureVisible(handle);
+    await tester.tap(handle);
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextFormField), '已核实');
+    await tester.tap(find.text('提交处理意见'));
+    await tester.pumpAndSettle();
+    expect(find.text('请选择审核结果'), findsOneWidget);
+    await tester.tap(find.byType(DropdownButtonFormField<String>));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('撤销本次爽约并扣回计次').last);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('提交处理意见'));
+    await tester.pumpAndSettle();
+    expect(repository.images.single['decision'], 'approved');
+    expect(find.text('爽约已撤销'), findsOneWidget);
+  });
 
   testWidgets(
     'complaints tabs switch between separate user and merchant lists',

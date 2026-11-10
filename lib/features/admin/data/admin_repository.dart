@@ -280,11 +280,15 @@ class AdminRepository {
     return data.map((item) => Map<String, dynamic>.from(item as Map)).toList();
   }
 
-  Future<void> handleUserComplaint(String bookingId, String response) async {
+  Future<void> handleUserComplaint(
+    String bookingId,
+    String response, {
+    String? decision,
+  }) async {
     await _apiClient.request(
       '/admin/complaints/${Uri.encodeComponent(bookingId)}',
       method: 'PATCH',
-      data: {'response': response},
+      data: {'response': response, 'decision': ?decision},
     );
   }
 

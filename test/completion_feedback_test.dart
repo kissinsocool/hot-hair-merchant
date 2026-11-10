@@ -82,6 +82,9 @@ void main() {
       expect(calls.last.path, '/admin/complaints/B1');
       expect(calls.last.method, 'PATCH');
       expect(calls.last.data, {'response': '已核实'});
+      await repository.handleUserComplaint('B2', '误判', decision: 'approved');
+      expect(calls.last.path, '/admin/complaints/B2');
+      expect(calls.last.data, {'response': '误判', 'decision': 'approved'});
     },
   );
 }
