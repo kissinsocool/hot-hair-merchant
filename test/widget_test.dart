@@ -1411,6 +1411,42 @@ void main() {
     expect(find.byKey(const ValueKey('terms-unselected')), findsOneWidget);
   });
 
+  testWidgets('merchant login explains a missing shop association', (
+    tester,
+  ) async {
+    const message = '该商家账号未关联门店，请联系管理员';
+    final dio = Dio()
+      ..interceptors.add(
+        InterceptorsWrapper(
+          onRequest: (options, handler) => handler.reject(
+            DioException(
+              requestOptions: options,
+              type: DioExceptionType.badResponse,
+              response: Response(
+                requestOptions: options,
+                statusCode: 403,
+                data: {'message': message},
+              ),
+            ),
+          ),
+        ),
+      );
+    await tester.pumpWidget(
+      MaterialApp(
+        home: MerchantLoginScreen(
+          repository: MerchantAuthRepository(apiClient: ApiClient(dio: dio)),
+          onLoggedIn: (_) => fail('Login must stay on the sign-in screen'),
+        ),
+      ),
+    );
+    await tester.enterText(find.byType(TextFormField).at(0), 'merchant');
+    await tester.enterText(find.byType(TextFormField).at(1), 'old-password');
+    await tester.tap(find.byKey(const ValueKey('terms-selection')));
+    await tester.tap(find.text('登录'));
+    await tester.pumpAndSettle();
+    expect(find.text(message), findsOneWidget);
+  });
+
   testWidgets('shows admin login only for the admin portal', (tester) async {
     await tester.pumpWidget(const AdminApp());
     await tester.pumpAndSettle();

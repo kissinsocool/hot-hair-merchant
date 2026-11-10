@@ -2,6 +2,7 @@ import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../../../core/network/api_client.dart';
 import '../../../core/theme/app_theme.dart';
 import '../data/merchant_auth_repository.dart';
 import '../data/merchant_session_store.dart';
@@ -69,9 +70,11 @@ class _MerchantLoginScreenState extends State<MerchantLoginScreen> {
       if (!mounted) return;
       final statusCode = e.response?.statusCode;
       setState(() {
-        _errorMessage = statusCode == 401 || statusCode == 403
-            ? '账号或密码错误'
-            : '无法连接服务器，请检查网络或接口地址';
+        _errorMessage = switch (statusCode) {
+          401 => '账号或密码错误',
+          403 => userFacingApiError(e),
+          _ => '无法连接服务器，请检查网络或接口地址',
+        };
       });
     } catch (_) {
       if (!mounted) return;

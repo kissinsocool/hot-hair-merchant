@@ -151,6 +151,15 @@ void main() {
     await tester.pumpAndSettle();
     expect(repository.savedDistrict, isNull);
     await _enterInitialPassword(tester, 'fixture-pass7');
+    final salonId = find.byWidgetPredicate(
+      (widget) => widget is TextField && widget.decoration?.labelText == '店铺ID',
+    );
+    await tester.ensureVisible(salonId);
+    await tester.enterText(salonId, ' ');
+    await tester.tap(find.text('保存'));
+    await tester.pumpAndSettle();
+    expect(repository.savedDistrict, isNull);
+    await tester.enterText(salonId, '1');
     await tester.tap(find.text('保存'));
     await tester.pumpAndSettle();
     expect(repository.savedDistrict, '龙湖天街');

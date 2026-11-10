@@ -522,6 +522,10 @@ class _AdminMerchantsPageState
                   if (!_isValidDeposit(depositController.text)) {
                     throw Exception('保证金必须是非负数字');
                   }
+                  final salonId = salonIdController.text.trim();
+                  if (salonId.isEmpty) {
+                    throw Exception('请填写店铺 ID');
+                  }
                   final password = passwordController.text;
                   if ((!isEditing || password.isNotEmpty) &&
                       !isValidNewPassword(password)) {
@@ -533,7 +537,7 @@ class _AdminMerchantsPageState
                       id: merchant['id'].toString(),
                       username: usernameController.text.trim(),
                       displayName: usernameController.text.trim(),
-                      salonId: salonIdController.text.trim(),
+                      salonId: salonId,
                       deposit: depositController.text.trim(),
                       tags: tags,
                       businessDistrict: businessDistrict,
@@ -543,7 +547,7 @@ class _AdminMerchantsPageState
                     await repository.createMerchant(
                       username: usernameController.text.trim(),
                       displayName: usernameController.text.trim(),
-                      salonId: salonIdController.text.trim(),
+                      salonId: salonId,
                       deposit: depositController.text.trim(),
                       tags: tags,
                       businessDistrict: businessDistrict,
