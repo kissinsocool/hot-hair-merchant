@@ -2,9 +2,11 @@ import 'dart:convert';
 
 import 'package:flutter/material.dart';
 
+import '../../../core/network/api_client.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/widgets/page_width.dart';
 import '../../auth/data/merchant_session_store.dart';
+import '../../auth/domain/password_policy.dart';
 import '../../../core/image/image_upload_picker.dart';
 import '../data/merchant_account_repository.dart';
 
@@ -59,6 +61,10 @@ class _MerchantAccountScreenState extends State<MerchantAccountScreen> {
   }
 
   Future<void> _save() async {
+    if (_changePassword && !isValidNewPassword(_newPasswordController.text)) {
+      _showMessage(newPasswordRule);
+      return;
+    }
     if (_changePassword &&
         _newPasswordController.text != _confirmPasswordController.text) {
       _showMessage('两次新密码不一致');
@@ -79,9 +85,9 @@ class _MerchantAccountScreenState extends State<MerchantAccountScreen> {
       _confirmPasswordController.clear();
       setState(() => _changePassword = false);
       _showMessage('账号信息已保存');
-    } catch (_) {
+    } catch (error) {
       if (!mounted) return;
-      _showMessage('保存失败，请检查当前密码');
+      _showMessage(userFacingApiError(error, fallback: '保存失败，请检查当前密码'));
     } finally {
       if (mounted) setState(() => _isSaving = false);
     }
@@ -232,8 +238,10 @@ class _MerchantAccountScreenState extends State<MerchantAccountScreen> {
                       TextField(
                         controller: _newPasswordController,
                         obscureText: true,
+                        maxLength: 128,
                         decoration: const InputDecoration(
                           labelText: '新密码',
+                          helperText: newPasswordRule,
                           prefixIcon: Icon(Icons.password_outlined),
                         ),
                       ),

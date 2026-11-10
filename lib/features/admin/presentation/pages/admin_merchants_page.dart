@@ -3,6 +3,7 @@ import 'dart:math';
 import 'package:flutter/material.dart';
 
 import '../../../../core/theme/app_theme.dart';
+import '../../../auth/domain/password_policy.dart';
 import '../../../booking/domain/booking_order.dart';
 import '../../domain/admin_rules.dart';
 import '../admin_page.dart';
@@ -376,9 +377,7 @@ class _AdminMerchantsPageState
     final depositController = TextEditingController(
       text: _merchantDeposit(merchant ?? const {}),
     );
-    final passwordController = TextEditingController(
-      text: isEditing ? '' : '123456',
-    );
+    final passwordController = TextEditingController();
     final selectedTags = ((salon['tags'] as List?) ?? const [])
         .map((tag) => tag.toString())
         .where((tag) => tag.isNotEmpty)
@@ -387,8 +386,11 @@ class _AdminMerchantsPageState
     final availableTags = <String>{...selectedTags};
     final customTagController = TextEditingController();
 
-    final saved = await showDialog<bool>(
+    final navigator = Navigator.of(context, rootNavigator: true);
+    final dialog = DialogRoute<bool>(
       context: context,
+      themes: InheritedTheme.capture(from: context, to: navigator.context),
+      barrierColor: DialogTheme.of(context).barrierColor ?? Colors.black54,
       builder: (context) => StatefulBuilder(
         builder: (context, setDialogState) => AlertDialog(
           title: Text(isEditing ? '编辑商家账号' : '新增商家账号'),
@@ -502,6 +504,7 @@ class _AdminMerchantsPageState
                     maxLength: 128,
                     decoration: InputDecoration(
                       labelText: isEditing ? '重置密码（可不填）' : '初始密码',
+                      helperText: newPasswordRule,
                     ),
                   ),
                 ],
@@ -519,6 +522,11 @@ class _AdminMerchantsPageState
                   if (!_isValidDeposit(depositController.text)) {
                     throw Exception('保证金必须是非负数字');
                   }
+                  final password = passwordController.text;
+                  if ((!isEditing || password.isNotEmpty) &&
+                      !isValidNewPassword(password)) {
+                    throw Exception(newPasswordRule);
+                  }
                   final tags = selectedTags.toList();
                   if (isEditing) {
                     await repository.updateMerchant(
@@ -529,7 +537,7 @@ class _AdminMerchantsPageState
                       deposit: depositController.text.trim(),
                       tags: tags,
                       businessDistrict: businessDistrict,
-                      password: passwordController.text,
+                      password: password,
                     );
                   } else {
                     await repository.createMerchant(
@@ -539,7 +547,7 @@ class _AdminMerchantsPageState
                       deposit: depositController.text.trim(),
                       tags: tags,
                       businessDistrict: businessDistrict,
-                      password: passwordController.text,
+                      password: password,
                     );
                   }
                   if (context.mounted) Navigator.pop(context, true);
@@ -554,6 +562,8 @@ class _AdminMerchantsPageState
       ),
     );
 
+    final saved = await navigator.push(dialog);
+    await dialog.completed;
     usernameController.dispose();
     salonIdController.dispose();
     depositController.dispose();

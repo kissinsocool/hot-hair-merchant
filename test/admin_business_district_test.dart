@@ -95,6 +95,14 @@ Future<void> _selectDistrict(WidgetTester tester, String label) async {
   await tester.pumpAndSettle();
 }
 
+Future<void> _enterInitialPassword(WidgetTester tester, String password) async {
+  final field = find.byWidgetPredicate(
+    (widget) => widget is TextField && widget.decoration?.labelText == '初始密码',
+  );
+  await tester.ensureVisible(field);
+  await tester.enterText(field, password);
+}
+
 void main() {
   testWidgets(
     'edit saves, displays, restores and clears the district below tags',
@@ -138,6 +146,11 @@ void main() {
     await tester.tap(find.text('新增商家账号'));
     await tester.pumpAndSettle();
     await _selectDistrict(tester, '龙湖天街');
+    await _enterInitialPassword(tester, '1234567890');
+    await tester.tap(find.text('保存'));
+    await tester.pumpAndSettle();
+    expect(repository.savedDistrict, isNull);
+    await _enterInitialPassword(tester, 'fixture-pass7');
     await tester.tap(find.text('保存'));
     await tester.pumpAndSettle();
     expect(repository.savedDistrict, '龙湖天街');
@@ -151,6 +164,7 @@ void main() {
     await tester.tap(find.text('新增商家账号'));
     await tester.pumpAndSettle();
     await _selectDistrict(tester, '庞各庄');
+    await _enterInitialPassword(tester, 'fixture-pass7');
     await tester.tap(find.text('保存'));
     await tester.pumpAndSettle();
     expect(repository.savedDistrict, '庞各庄');
