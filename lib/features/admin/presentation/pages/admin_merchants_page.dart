@@ -276,7 +276,16 @@ class _AdminMerchantsPageState
     );
   }
 
-  Future<void> _showContentDialog(Map<String, dynamic> merchant) async {
+  Future<void> _showContentDialog(Map<String, dynamic> summary) async {
+    final Map<String, dynamic> merchant;
+    try {
+      merchant = await repository.fetchMerchant(summary['id'].toString());
+    } catch (error) {
+      showError(error, fallback: '店铺内容加载失败，请重试');
+      return;
+    }
+    if (!mounted) return;
+
     final salon = Map<String, dynamic>.from((merchant['salon'] as Map?) ?? {});
     final images =
         [

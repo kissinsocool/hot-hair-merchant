@@ -23,10 +23,13 @@ class _Repository extends AdminRepository {
       'username': 'merchant',
       'displayName': '测试商家',
       'salonId': 'salon-1',
+      'salonName': '测试店铺',
       'licenseStatus': 'approved',
       'contentReviewStatus': 'approved',
       'publishStatus': 'online',
       'salon': {
+        'id': 'salon-1',
+        'name': '测试店铺',
         'tags': ['人气店铺'],
         'businessDistrict': district,
       },

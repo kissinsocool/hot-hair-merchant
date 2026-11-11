@@ -11,7 +11,7 @@ class _Repository extends AdminRepository {
   int writes = 0;
   Completer<void>? pending;
 
-  Map<String, dynamic> get merchant => {
+  Map<String, dynamic> get summary => {
     'id': 'merchant-1',
     'username': 'merchant',
     'displayName': '测试商家',
@@ -23,7 +23,7 @@ class _Repository extends AdminRepository {
   };
 
   @override
-  Future<List<Map<String, dynamic>>> fetchMerchants() async => [merchant];
+  Future<List<Map<String, dynamic>>> fetchMerchants() async => [summary];
 
   @override
   Future<Map<String, dynamic>> updateMerchantFeatured({
@@ -35,7 +35,10 @@ class _Repository extends AdminRepository {
     if (pending != null) await pending!.future;
     if (fail) throw Exception('精选保存失败');
     featured = isFeatured;
-    return merchant;
+    return {
+      ...summary,
+      'salon': {...(summary['salon'] as Map), 'description': '完整店铺介绍'},
+    };
   }
 }
 

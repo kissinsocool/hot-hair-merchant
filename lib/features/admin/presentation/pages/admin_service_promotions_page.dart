@@ -24,14 +24,12 @@ class _AdminServicePromotionsPageState
         AdminPageState<AdminServicePromotionsPage, List<Map<String, dynamic>>> {
   @override
   Future<List<Map<String, dynamic>>> loadData() async {
-    return repository.fetchMerchants();
+    return repository.fetchServicePromotions();
   }
 
   @override
-  Widget buildContent(BuildContext context) => _ServicePromotionsTab(
-    merchants: data!,
-    onAction: _reviewServicePromotion,
-  );
+  Widget buildContent(BuildContext context) =>
+      _ServicePromotionsTab(rows: data!, onAction: _reviewServicePromotion);
 
   Future<void> _reviewServicePromotion(
     Map<String, dynamic> service,
@@ -54,17 +52,13 @@ class _AdminServicePromotionsPageState
 }
 
 class _ServicePromotionsTab extends StatelessWidget {
-  const _ServicePromotionsTab({
-    required this.merchants,
-    required this.onAction,
-  });
+  const _ServicePromotionsTab({required this.rows, required this.onAction});
 
-  final List<Map<String, dynamic>> merchants;
+  final List<Map<String, dynamic>> rows;
   final void Function(Map<String, dynamic> service, bool approve) onAction;
 
   @override
   Widget build(BuildContext context) {
-    final rows = servicePromotionRows(merchants);
     final pending = rows
         .where((item) => item['promotionReviewStatus'] == 'pending')
         .toList();

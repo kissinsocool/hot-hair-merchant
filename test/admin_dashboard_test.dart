@@ -9,10 +9,10 @@ import 'package:hot_pepper_merchant/features/booking/domain/booking_order.dart';
 
 class _AdminRepository extends AdminRepository {
   final calls = <String>[];
-  Object? merchantsError;
+  Object? merchantSummariesError;
   Completer<Map<String, dynamic>>? overviewRequest;
   List<Map<String, dynamic>> users = [];
-  List<Map<String, dynamic>> merchants = [];
+  List<Map<String, dynamic>> merchantSummaries = [];
   List<Map<String, dynamic>> appeals = [];
   List<Map<String, dynamic>> images = [];
   Object? appealError;
@@ -27,8 +27,20 @@ class _AdminRepository extends AdminRepository {
   @override
   Future<List<Map<String, dynamic>>> fetchMerchants() async {
     calls.add('merchants');
-    if (merchantsError != null) throw merchantsError!;
-    return merchants;
+    if (merchantSummariesError != null) throw merchantSummariesError!;
+    return merchantSummaries;
+  }
+
+  @override
+  Future<List<Map<String, dynamic>>> fetchSalonContacts() async {
+    calls.add('salon-contacts');
+    return [];
+  }
+
+  @override
+  Future<List<Map<String, dynamic>>> fetchServicePromotions() async {
+    calls.add('promotions');
+    return [];
   }
 
   @override
@@ -325,7 +337,7 @@ void main() {
     'merchant name search sits above tabs at 80% width and filters each category',
     (tester) async {
       final repository = _AdminRepository()
-        ..merchants = [
+        ..merchantSummaries = [
           {
             'displayName': '小林造型',
             'licenseStatus': 'approved',
@@ -431,7 +443,7 @@ void main() {
         'users',
         'images',
         'posts',
-        'merchants',
+        'promotions',
         'complaints',
         'users',
         'appeals',
@@ -452,14 +464,15 @@ void main() {
   testWidgets('a page failure does not block other pages and can be retried', (
     tester,
   ) async {
-    final repository = _AdminRepository()..merchantsError = Exception('商家加载失败');
+    final repository = _AdminRepository()
+      ..merchantSummariesError = Exception('商家加载失败');
     await _mount(tester, repository);
     await _open(tester, '商家账号');
     expect(find.text('商家加载失败'), findsOneWidget);
     await _open(tester, '概览');
     expect(find.text('昨日首页曝光'), findsOneWidget);
     await _open(tester, '商家账号');
-    repository.merchantsError = null;
+    repository.merchantSummariesError = null;
     await tester.tap(find.text('重新加载'));
     await tester.pumpAndSettle();
     expect(find.text('商家加载失败'), findsNothing);
@@ -471,7 +484,7 @@ void main() {
   ) async {
     final request = RequestOptions(path: '/admin/merchants');
     final repository = _AdminRepository()
-      ..merchantsError = DioException(
+      ..merchantSummariesError = DioException(
         requestOptions: request,
         response: Response(requestOptions: request, statusCode: 401),
         type: DioExceptionType.badResponse,
@@ -535,7 +548,12 @@ void main() {
       await _mount(tester, repository);
       await tester.tap(find.text('全部订单'));
       await tester.pumpAndSettle();
-      expect(repository.calls, ['overview', 'bookings', 'merchants', 'users']);
+      expect(repository.calls, [
+        'overview',
+        'bookings',
+        'salon-contacts',
+        'users',
+      ]);
       expect(tester.takeException(), isNull);
     },
   );

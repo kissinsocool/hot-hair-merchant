@@ -79,8 +79,32 @@ class AdminRepository {
   }
 
   Future<List<Map<String, dynamic>>> fetchMerchants() async {
-    final data = await _apiClient.requestAllPages('/admin/merchants');
+    final data = await _apiClient.requestAllPages(
+      '/admin/merchants',
+      queryParameters: {'view': 'summary'},
+    );
     return data.map((item) => Map<String, dynamic>.from(item as Map)).toList();
+  }
+
+  Future<Map<String, dynamic>> fetchMerchant(String id) async {
+    final response = await _apiClient.request('/admin/merchants/$id');
+    return Map<String, dynamic>.from((response.data as Map)['merchant'] as Map);
+  }
+
+  /// Name, phone and address of every salon, keyed by `salonId`, for order
+  /// tables. Much lighter than [fetchMerchants].
+  Future<List<Map<String, dynamic>>> fetchSalonContacts() async {
+    final data = await _apiClient.requestAllPages('/admin/salon-contacts');
+    return data.map((item) => Map<String, dynamic>.from(item as Map)).toList();
+  }
+
+  /// One row per published service with a promotion request, carrying its
+  /// `merchantId` and `salonName`.
+  Future<List<Map<String, dynamic>>> fetchServicePromotions() async {
+    final response = await _apiClient.request('/admin/service-promotions');
+    return (response.data as List)
+        .map((item) => Map<String, dynamic>.from(item as Map))
+        .toList();
   }
 
   Future<Map<String, dynamic>> createMerchant({

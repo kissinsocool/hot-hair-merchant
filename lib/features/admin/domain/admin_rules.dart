@@ -86,26 +86,6 @@ String merchantContentSubmissionText(Map<String, dynamic> merchant) {
   return time == '-' ? '最后一次内容提交时间：暂无记录' : '最后一次内容提交时间：$time';
 }
 
-List<Map<String, dynamic>> servicePromotionRows(
-  Iterable<Map<String, dynamic>> merchants,
-) => [
-  for (final merchant in merchants)
-    for (final service
-        in ((merchant['salon'] as Map?)?['services'] as List?) ?? const [])
-      if (service is Map &&
-          const {
-            'pending',
-            'approved',
-            'rejected',
-          }.contains(service['promotionReviewStatus']))
-        {
-          ...Map<String, dynamic>.from(service),
-          'merchantId': merchant['id'],
-          'salonName':
-              (merchant['salon'] as Map?)?['name'] ?? merchant['salonName'],
-        },
-];
-
 String avatarReviewStatusLabel(dynamic status) => switch (status) {
   'pending' => '待审核',
   'approved' => '已通过',

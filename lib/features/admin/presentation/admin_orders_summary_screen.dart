@@ -38,13 +38,15 @@ class AdminOrdersSummaryScreen extends StatefulWidget {
   const AdminOrdersSummaryScreen({
     super.key,
     required this.orders,
-    required this.merchants,
+    required this.salons,
     required this.users,
     this.title = '订单汇总',
   });
 
   final List<BookingOrder> orders;
-  final List<Map<String, dynamic>> merchants;
+
+  /// Salon contact rows (`salonId`, `name`, `phone`, `address`).
+  final List<Map<String, dynamic>> salons;
   final List<Map<String, dynamic>> users;
   final String title;
 
@@ -75,9 +77,9 @@ class _AdminOrdersSummaryScreenState extends State<AdminOrdersSummaryScreen> {
       shopQuery: _shopQuery,
       status: _selectedStatus == 'all' ? null : _selectedStatus,
     );
-    final merchantsBySalonId = {
-      for (final merchant in widget.merchants)
-        merchant['salonId']?.toString() ?? '': merchant,
+    final salonsById = {
+      for (final salon in widget.salons)
+        salon['salonId']?.toString() ?? '': salon,
     };
     final phonesByUserId = {
       for (final user in widget.users)
@@ -202,7 +204,7 @@ class _AdminOrdersSummaryScreenState extends State<AdminOrdersSummaryScreen> {
                     for (final order in orders)
                       _row(
                         order,
-                        merchantsBySalonId[order.salonId],
+                        salonsById[order.salonId],
                         phonesByUserId[order.userId.replaceFirst(
                           RegExp(r'^user-'),
                           '',
@@ -219,10 +221,10 @@ class _AdminOrdersSummaryScreenState extends State<AdminOrdersSummaryScreen> {
 
   DataRow _row(
     BookingOrder order,
-    Map<String, dynamic>? merchant,
+    Map<String, dynamic>? salonContact,
     String? userPhone,
   ) {
-    final salon = merchant?['salon'] as Map? ?? const {};
+    final salon = salonContact ?? const <String, dynamic>{};
     final phone = order.userPhone.isNotEmpty
         ? order.userPhone
         : userPhone ?? '';

@@ -67,11 +67,8 @@ void main() {
       MaterialApp(
         home: AdminOrdersSummaryScreen(
           orders: [julyOrder],
-          merchants: [
-            {
-              'salonId': 'salon-1',
-              'salon': {'phone': '123456', 'address': '测试路1号'},
-            },
+          salons: [
+            {'salonId': 'salon-1', 'phone': '123456', 'address': '测试路1号'},
           ],
           users: const [],
         ),

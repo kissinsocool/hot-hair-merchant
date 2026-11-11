@@ -54,7 +54,7 @@ class _Repository extends AdminRepository {
   }
 
   @override
-  Future<List<Map<String, dynamic>>> fetchMerchants() async => [];
+  Future<List<Map<String, dynamic>>> fetchSalonContacts() async => [];
   @override
   Future<List<Map<String, dynamic>>> fetchUsers() async => [];
 

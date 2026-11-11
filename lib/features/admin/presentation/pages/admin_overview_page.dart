@@ -78,7 +78,7 @@ class _AdminOverviewPageState
       final before = overview['bookingsSnapshotBefore'] as String;
       final results = await Future.wait([
         repository.fetchNewBookings(before),
-        repository.fetchMerchants(),
+        repository.fetchSalonContacts(),
         repository.fetchUsers(),
       ]);
       if (!mounted) return;
@@ -87,7 +87,7 @@ class _AdminOverviewPageState
         builder: (_) => AdminOrdersSummaryScreen(
           title: '今日新预约订单',
           orders: results[0] as List<BookingOrder>,
-          merchants: results[1] as List<Map<String, dynamic>>,
+          salons: results[1] as List<Map<String, dynamic>>,
           users: results[2] as List<Map<String, dynamic>>,
         ),
       );
@@ -133,7 +133,7 @@ class _AdminOverviewPageState
     try {
       final results = await Future.wait([
         repository.fetchBookings(),
-        repository.fetchMerchants(),
+        repository.fetchSalonContacts(),
         repository.fetchUsers(),
       ]);
       if (!mounted) return;
@@ -141,7 +141,7 @@ class _AdminOverviewPageState
         MaterialPageRoute<void>(
           builder: (_) => AdminOrdersSummaryScreen(
             orders: results[0] as List<BookingOrder>,
-            merchants: results[1] as List<Map<String, dynamic>>,
+            salons: results[1] as List<Map<String, dynamic>>,
             users: results[2] as List<Map<String, dynamic>>,
           ),
         ),

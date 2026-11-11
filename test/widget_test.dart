@@ -624,7 +624,7 @@ void main() {
     expect(service['imageUrl'], '');
   });
 
-  test('promotion requests stay switched on and populate the admin table', () {
+  test('promotion requests stay switched on', () {
     final service = <String, dynamic>{
       'id': 'service-1',
       'promotionEnabled': false,
@@ -632,28 +632,6 @@ void main() {
     };
     normalizeServicePromotionRequest(service);
     expect(service['promotionEnabled'], isTrue);
-
-    final rows = servicePromotionRows([
-      {
-        'id': 'merchant-1',
-        'salon': {
-          'name': '测试店铺',
-          'services': [
-            {...service, 'name': '男士精剪'},
-            {
-              'id': 'service-2',
-              'name': '普通套餐',
-              'promotionReviewStatus': 'unsubmitted',
-            },
-          ],
-        },
-      },
-    ]);
-
-    expect(rows, hasLength(1));
-    expect(rows.single['merchantId'], 'merchant-1');
-    expect(rows.single['salonName'], '测试店铺');
-    expect(rows.single['name'], '男士精剪');
   });
 
   test('API errors are converted to user-facing text without status codes', () {
