@@ -12,7 +12,7 @@ Upstream project and license:
 - Source: https://github.com/google/material-design-icons
 - Apache License 2.0: https://www.apache.org/licenses/LICENSE-2.0
 
-The Flutter 3.44.0 SDK used by this project distributes
+The Flutter 3.47.9 SDK distributes
 `MaterialIcons-Regular.otf` with an accompanying Creative Commons Attribution
 4.0 International license. This notice preserves the attribution required by
 that accompanying license.

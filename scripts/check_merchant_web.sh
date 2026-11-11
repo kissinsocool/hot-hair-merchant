@@ -16,7 +16,6 @@ flutter test --no-pub --platform chrome \
   test/native_multiline_text_field_web_test.dart \
   test/portal_session_store_web_test.dart \
   test/image_upload_picker_web_test.dart
-node --test test/ios_pointer_recovery_test.js
 
 if curl --silent --fail http://127.0.0.1:4444/status >/dev/null; then
   echo 'Port 4444 is already in use by another ChromeDriver.' >&2

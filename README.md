@@ -4,6 +4,8 @@ Merchant app for managing Hot Pepper booking orders.
 
 ## Getting Started
 
+Use Flutter stable 3.47.9 or later.
+
 The app uses `https://api.hothaircc.cn/api` and realtime updates from
 `wss://api.hothaircc.cn/ws` by default:
 
