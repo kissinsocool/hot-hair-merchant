@@ -116,6 +116,9 @@ const serviceTagOptions = <({String id, String label})>[
   (id: 'nutrition', label: '营养'),
 ];
 const maxServiceTagCount = 4;
+// 商家端每条动态最多上传的图片数。后端仍接受最多 9 张（services/salon-posts.js），
+// 以兼容已发布的旧版商家端和已有的动态。
+const maxSalonPostImageCount = 3;
 
 const afterSalesPolicyOptions = <({String id, String label})>[
   (id: 'haircut_7_day_adjustment', label: '剪发七日内不满意可重新调整'),
@@ -1144,9 +1147,9 @@ class _MerchantSalonScreenState extends State<MerchantSalonScreen> {
   }
 
   Future<void> _uploadPostImages() async {
-    final remaining = 9 - _postImageUrls.length;
+    final remaining = maxSalonPostImageCount - _postImageUrls.length;
     if (remaining <= 0) {
-      _showTopMessage('每条动态最多上传9张图片');
+      _showTopMessage('每条动态最多上传$maxSalonPostImageCount张图片');
       return;
     }
     final pickedImages = await _pickImagesOrShowError(limit: remaining);
@@ -2463,7 +2466,7 @@ class _MerchantSalonScreenState extends State<MerchantSalonScreen> {
               children: [
                 Expanded(
                   child: Text(
-                    '动态图片 ${_postImageUrls.length}/9',
+                    '动态图片 ${_postImageUrls.length}/$maxSalonPostImageCount',
                     style: const TextStyle(fontWeight: FontWeight.bold),
                   ),
                 ),
@@ -2479,6 +2482,12 @@ class _MerchantSalonScreenState extends State<MerchantSalonScreen> {
                   label: Text(_isUploadingPostImages ? '上传中' : '选择图片'),
                 ),
               ],
+            ),
+            const SizedBox(height: 4),
+            // 小程序「按分类查找」展示每条动态的第一张图，分类取自关联套餐的标签。
+            Text(
+              '第一张图片会展示在小程序的分类页面（需关联套餐）',
+              style: TextStyle(color: Colors.grey[600], fontSize: 12),
             ),
             if (_postImageUrls.isNotEmpty) ...[
               const SizedBox(height: 12),

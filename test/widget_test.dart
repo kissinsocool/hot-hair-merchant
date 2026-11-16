@@ -197,6 +197,8 @@ void main() {
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 300));
 
+    expect(find.text('第一张图片会展示在小程序的分类页面（需关联套餐）'), findsOneWidget);
+
     await tester.enterText(
       find.byKey(const ValueKey('salon-post-content')),
       '今日短发作品',
