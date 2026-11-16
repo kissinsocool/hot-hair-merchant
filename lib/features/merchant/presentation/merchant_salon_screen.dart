@@ -1149,7 +1149,7 @@ class _MerchantSalonScreenState extends State<MerchantSalonScreen> {
   Future<void> _uploadPostImages() async {
     final remaining = maxSalonPostImageCount - _postImageUrls.length;
     if (remaining <= 0) {
-      _showTopMessage('每条动态最多上传$maxSalonPostImageCount张图片');
+      _showTopMessage('每个作品最多上传$maxSalonPostImageCount张图片');
       return;
     }
     final pickedImages = await _pickImagesOrShowError(limit: remaining);
@@ -1166,7 +1166,7 @@ class _MerchantSalonScreenState extends State<MerchantSalonScreen> {
       }
     } catch (e) {
       if (mounted) {
-        _showTopMessage(userFacingApiError(e, fallback: '动态图片上传失败，已上传的图片会保留'));
+        _showTopMessage(userFacingApiError(e, fallback: '作品图片上传失败，已上传的图片会保留'));
       }
     } finally {
       if (mounted) setState(() => _isUploadingPostImages = false);
@@ -1180,7 +1180,7 @@ class _MerchantSalonScreenState extends State<MerchantSalonScreen> {
       return;
     }
     if (content.isEmpty) {
-      _showTopMessage('请输入动态文字');
+      _showTopMessage('请输入作品内容');
       return;
     }
     setState(() => _isPublishingPost = true);
@@ -1199,7 +1199,7 @@ class _MerchantSalonScreenState extends State<MerchantSalonScreen> {
         _postServiceId = null;
       });
       _showTopMessage(
-        '店铺动态已提交审核',
+        '作品已提交审核',
         iconColor: const Color(0xff214623),
         icon: Icons.check_circle_outline,
         backgroundColor: const Color(0xffc5e9cb),
@@ -1207,7 +1207,7 @@ class _MerchantSalonScreenState extends State<MerchantSalonScreen> {
       );
     } catch (e) {
       if (mounted) {
-        _showTopMessage(userFacingApiError(e, fallback: '动态发布失败，请稍后重试'));
+        _showTopMessage(userFacingApiError(e, fallback: '作品发布失败，请稍后重试'));
       }
     } finally {
       if (mounted) setState(() => _isPublishingPost = false);
@@ -1218,7 +1218,7 @@ class _MerchantSalonScreenState extends State<MerchantSalonScreen> {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('删除店铺动态'),
+        title: const Text('删除作品'),
         content: const Text('删除后将无法恢复，确定继续吗？'),
         actions: [
           TextButton(
@@ -1237,7 +1237,7 @@ class _MerchantSalonScreenState extends State<MerchantSalonScreen> {
       await _repository.deleteSalonPost(post['id'].toString());
       if (!mounted) return;
       setState(() => _posts.remove(post));
-      _showTopMessage('动态已删除');
+      _showTopMessage('作品已删除');
     } catch (e) {
       if (mounted) {
         _showTopMessage(userFacingApiError(e, fallback: '删除失败，请稍后重试'));
@@ -1465,7 +1465,7 @@ class _MerchantSalonScreenState extends State<MerchantSalonScreen> {
                 Tab(icon: Icon(Icons.storefront), text: '店铺信息'),
                 Tab(icon: Icon(Icons.spa), text: '服务套餐'),
                 Tab(icon: Icon(Icons.badge), text: '理发师'),
-                Tab(icon: Icon(Icons.dynamic_feed), text: '店铺动态'),
+                Tab(icon: Icon(Icons.dynamic_feed), text: '作品'),
               ],
             ),
           ),
@@ -2395,7 +2395,7 @@ class _MerchantSalonScreenState extends State<MerchantSalonScreen> {
     return Column(
       children: [
         _buildSection(
-          title: '发布店铺动态',
+          title: '发布作品',
           icon: Icons.dynamic_feed,
           children: [
             DropdownButtonFormField<String>(
@@ -2456,7 +2456,7 @@ class _MerchantSalonScreenState extends State<MerchantSalonScreen> {
               maxLines: 8,
               maxLength: 500,
               decoration: const InputDecoration(
-                labelText: '动态文字',
+                labelText: '作品内容',
                 hintText: '分享新作品、店铺活动或护理知识',
                 alignLabelWithHint: true,
                 border: OutlineInputBorder(),
@@ -2466,7 +2466,7 @@ class _MerchantSalonScreenState extends State<MerchantSalonScreen> {
               children: [
                 Expanded(
                   child: Text(
-                    '动态图片 ${_postImageUrls.length}/$maxSalonPostImageCount',
+                    '作品图片 ${_postImageUrls.length}/$maxSalonPostImageCount',
                     style: const TextStyle(fontWeight: FontWeight.bold),
                   ),
                 ),
@@ -2485,9 +2485,9 @@ class _MerchantSalonScreenState extends State<MerchantSalonScreen> {
             ),
             const SizedBox(height: 4),
             // 小程序「按分类查找」展示每条动态的第一张图，分类取自关联套餐的标签。
-            Text(
-              '第一张图片会展示在小程序的分类页面（需关联套餐）',
-              style: TextStyle(color: Colors.grey[600], fontSize: 12),
+            const Text(
+              '※ 默认第一张图片展示在首页分类推广内（需关联套餐）',
+              style: TextStyle(color: Colors.pink, fontSize: 12),
             ),
             if (_postImageUrls.isNotEmpty) ...[
               const SizedBox(height: 12),
@@ -2543,17 +2543,17 @@ class _MerchantSalonScreenState extends State<MerchantSalonScreen> {
                         ),
                       )
                     : const Icon(Icons.send),
-                label: Text(_isPublishingPost ? '发布中' : '发布动态'),
+                label: Text(_isPublishingPost ? '发布中' : '发布作品'),
               ),
             ),
           ],
         ),
         const SizedBox(height: 16),
         _buildSection(
-          title: '已发布动态',
+          title: '已发布作品',
           icon: Icons.article_outlined,
           children: _posts.isEmpty
-              ? [_buildEmptyHint('还没有店铺动态')]
+              ? [_buildEmptyHint('还没有作品')]
               : _posts.map(_buildPostCard).toList(),
         ),
       ],
@@ -2606,7 +2606,7 @@ class _MerchantSalonScreenState extends State<MerchantSalonScreen> {
                 visualDensity: VisualDensity.compact,
               ),
               IconButton(
-                tooltip: '删除动态',
+                tooltip: '删除作品',
                 onPressed: () => _deletePost(post),
                 icon: const Icon(Icons.delete_outline),
               ),

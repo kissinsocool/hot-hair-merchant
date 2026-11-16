@@ -197,7 +197,10 @@ void main() {
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 300));
 
-    expect(find.text('第一张图片会展示在小程序的分类页面（需关联套餐）'), findsOneWidget);
+    expect(
+      find.text('※ 默认第一张图片展示在首页分类推广内（需关联套餐）'),
+      findsOneWidget,
+    );
 
     await tester.enterText(
       find.byKey(const ValueKey('salon-post-content')),
@@ -207,7 +210,8 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.text('剪发套餐').last);
     await tester.pumpAndSettle();
-    await tester.tap(find.text('发布动态'));
+    // 发布区的标题和按钮都是「发布作品」，按钮在后。
+    await tester.tap(find.text('发布作品').last);
     await tester.pump();
     await tester.pump(const Duration(seconds: 4));
 
