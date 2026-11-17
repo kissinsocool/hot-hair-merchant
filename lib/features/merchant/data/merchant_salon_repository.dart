@@ -26,8 +26,9 @@ class MerchantSalonRepository {
     }
   }
 
+  /// [authorStaffId] 为 null 时以店铺本身的名义投稿（authorType: salon）。
   Future<Map<String, dynamic>> createSalonPost({
-    required String authorStaffId,
+    required String? authorStaffId,
     required String content,
     required List<String> imageUrls,
     String? serviceId,
@@ -36,7 +37,8 @@ class MerchantSalonRepository {
       '/merchant/salon-posts',
       method: 'POST',
       data: {
-        'authorStaffId': authorStaffId,
+        'authorType': authorStaffId == null ? 'salon' : 'staff',
+        'authorStaffId': ?authorStaffId,
         'content': content,
         'imageUrls': imageUrls,
         'serviceId': ?serviceId,

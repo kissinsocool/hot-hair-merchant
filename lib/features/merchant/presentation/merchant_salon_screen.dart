@@ -119,6 +119,8 @@ const maxServiceTagCount = 4;
 // 商家端每条动态最多上传的图片数。后端仍接受最多 9 张（services/salon-posts.js），
 // 以兼容已发布的旧版商家端和已有的动态。
 const maxSalonPostImageCount = 3;
+// 「投稿人」下拉里代表店铺本身的选项值；理发师选项的值是理发师 id。
+const salonPostAuthorValue = '__salon__';
 
 const afterSalesPolicyOptions = <({String id, String label})>[
   (id: 'haircut_7_day_adjustment', label: '剪发七日内不满意可重新调整'),
@@ -217,7 +219,8 @@ class _MerchantSalonScreenState extends State<MerchantSalonScreen> {
   List<Map<String, dynamic>> _staff = [];
   List<Map<String, dynamic>> _posts = [];
   List<String> _postImageUrls = [];
-  String? _postAuthorStaffId;
+  // 理发师 id，或 [salonPostAuthorValue] 表示以店铺名义投稿。
+  String _postAuthor = salonPostAuthorValue;
   String? _postServiceId;
   final List<MerchantNotification> _notifications = [];
   final Set<String> _notifiedReviewIds = {};
@@ -285,7 +288,7 @@ class _MerchantSalonScreenState extends State<MerchantSalonScreen> {
           final feeFen = profile['extraServiceFeeFen'];
           setStaffExtraServiceFee(profile, feeFen is int ? feeFen ~/ 100 : 0);
         }
-        _postAuthorStaffId = _firstSavedStaffId();
+        _postAuthor = _defaultPostAuthor();
         _postServiceId = null;
         _isLoading = false;
       });
@@ -453,10 +456,9 @@ class _MerchantSalonScreenState extends State<MerchantSalonScreen> {
         for (final profile in _staff) {
           normalizeStaffRole(profile);
         }
-        if (!_staff.any(
-          (profile) => profile['id']?.toString() == _postAuthorStaffId,
-        )) {
-          _postAuthorStaffId = _firstSavedStaffId();
+        if (_postAuthor != salonPostAuthorValue &&
+            !_staff.any((profile) => profile['id']?.toString() == _postAuthor)) {
+          _postAuthor = _defaultPostAuthor();
         }
         if (!_services.any((service) => service['id'] == _postServiceId)) {
           _postServiceId = null;
@@ -570,12 +572,13 @@ class _MerchantSalonScreenState extends State<MerchantSalonScreen> {
     return null;
   }
 
-  String? _firstSavedStaffId() {
+  // 有已保存的理发师时默认第一位理发师投稿，否则默认以店铺名义投稿。
+  String _defaultPostAuthor() {
     for (final profile in _staff) {
       final id = profile['id']?.toString() ?? '';
       if (id.isNotEmpty) return id;
     }
-    return null;
+    return salonPostAuthorValue;
   }
 
   String _salonAddressText() {
@@ -1175,8 +1178,9 @@ class _MerchantSalonScreenState extends State<MerchantSalonScreen> {
 
   Future<void> _publishPost() async {
     final content = _postContentController.text.trim();
-    if (_postAuthorStaffId == null) {
-      _showTopMessage('请先保存至少一位理发师，再选择投稿人');
+    final bySalon = _postAuthor == salonPostAuthorValue;
+    if (bySalon && (_salon['name']?.toString().trim() ?? '').isEmpty) {
+      _showTopMessage('请先填写并保存店铺名称，再以店铺名义发布');
       return;
     }
     if (content.isEmpty) {
@@ -1186,7 +1190,7 @@ class _MerchantSalonScreenState extends State<MerchantSalonScreen> {
     setState(() => _isPublishingPost = true);
     try {
       final post = await _repository.createSalonPost(
-        authorStaffId: _postAuthorStaffId!,
+        authorStaffId: bySalon ? null : _postAuthor,
         content: content,
         imageUrls: _postImageUrls,
         serviceId: _postServiceId,
@@ -2399,26 +2403,33 @@ class _MerchantSalonScreenState extends State<MerchantSalonScreen> {
           icon: Icons.dynamic_feed,
           children: [
             DropdownButtonFormField<String>(
+              key: ValueKey('salon-post-author-$_postAuthor'),
               initialValue:
-                  savedStaff.any(
-                    (profile) =>
-                        profile['id']?.toString() == _postAuthorStaffId,
-                  )
-                  ? _postAuthorStaffId
-                  : null,
+                  _postAuthor == salonPostAuthorValue ||
+                      savedStaff.any(
+                        (profile) => profile['id']?.toString() == _postAuthor,
+                      )
+                  ? _postAuthor
+                  : salonPostAuthorValue,
               decoration: const InputDecoration(
                 labelText: '投稿人',
                 border: OutlineInputBorder(),
               ),
-              items: savedStaff
-                  .map(
-                    (profile) => DropdownMenuItem<String>(
-                      value: profile['id'].toString(),
-                      child: Text(profile['name']?.toString() ?? ''),
-                    ),
-                  )
-                  .toList(),
-              onChanged: (value) => setState(() => _postAuthorStaffId = value),
+              items: [
+                DropdownMenuItem<String>(
+                  value: salonPostAuthorValue,
+                  child: Text(_salonPostAuthorLabel()),
+                ),
+                ...savedStaff.map(
+                  (profile) => DropdownMenuItem<String>(
+                    value: profile['id'].toString(),
+                    child: Text(profile['name']?.toString() ?? ''),
+                  ),
+                ),
+              ],
+              onChanged: (value) => setState(
+                () => _postAuthor = value ?? _defaultPostAuthor(),
+              ),
             ),
             const SizedBox(height: 12),
             DropdownButtonFormField<String>(
@@ -2560,7 +2571,13 @@ class _MerchantSalonScreenState extends State<MerchantSalonScreen> {
     );
   }
 
+  String _salonPostAuthorLabel() {
+    final name = _salon['name']?.toString().trim() ?? '';
+    return name.isEmpty ? '店铺官方' : '店铺官方（$name）';
+  }
+
   Widget _buildPostCard(Map<String, dynamic> post) {
+    final bySalon = post['authorType'] == 'salon';
     final images = (post['imageUrls'] as List? ?? const [])
         .map((value) => value.toString())
         .where((value) => value.isNotEmpty)
@@ -2583,16 +2600,45 @@ class _MerchantSalonScreenState extends State<MerchantSalonScreen> {
                 backgroundImage: authorImage.isEmpty
                     ? null
                     : NetworkImage(publicThumbnailUrl(authorImage, width: 240)),
-                child: authorImage.isEmpty ? const Icon(Icons.person) : null,
+                child: authorImage.isEmpty
+                    ? Icon(bySalon ? Icons.storefront : Icons.person)
+                    : null,
               ),
               const SizedBox(width: 10),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      post['authorName']?.toString() ?? '',
-                      style: const TextStyle(fontWeight: FontWeight.bold),
+                    Row(
+                      children: [
+                        Flexible(
+                          child: Text(
+                            post['authorName']?.toString() ?? '',
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(fontWeight: FontWeight.bold),
+                          ),
+                        ),
+                        if (bySalon) ...[
+                          const SizedBox(width: 6),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 6,
+                              vertical: 1,
+                            ),
+                            decoration: BoxDecoration(
+                              color: AppTheme.primaryPink,
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                            child: const Text(
+                              '官方',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 11,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ],
                     ),
                     Text(
                       _formatPostTime(post['createdAt']),

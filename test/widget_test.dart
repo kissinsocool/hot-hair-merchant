@@ -153,15 +153,16 @@ class _SalonPostRepository extends MerchantSalonRepository {
 
   @override
   Future<Map<String, dynamic>> createSalonPost({
-    required String authorStaffId,
+    required String? authorStaffId,
     required String content,
     required List<String> imageUrls,
     String? serviceId,
   }) async {
     createdPost = {
       'id': 'post-1',
-      'authorStaffId': authorStaffId,
-      'authorName': '小林',
+      'authorType': authorStaffId == null ? 'salon' : 'staff',
+      'authorStaffId': authorStaffId ?? '',
+      'authorName': authorStaffId == null ? '热辣发廊' : '小林',
       'content': content,
       'imageUrls': imageUrls,
       'serviceId': serviceId,
@@ -170,6 +171,15 @@ class _SalonPostRepository extends MerchantSalonRepository {
     };
     return createdPost!;
   }
+}
+
+class _NoStaffSalonPostRepository extends _SalonPostRepository {
+  @override
+  Future<Map<String, dynamic>> fetchSalon() async => {
+    ...await super.fetchSalon(),
+    'name': '热辣发廊',
+    'staff': <Map<String, dynamic>>[],
+  };
 }
 
 class _LicenseOnlyAccountRepository extends MerchantAccountRepository {
@@ -220,6 +230,35 @@ void main() {
     expect(repository.createdPost, containsPair('serviceId', 'service-1'));
     expect(find.text('今日短发作品'), findsOneWidget);
     expect(find.text('关联套餐：剪发套餐'), findsOneWidget);
+  });
+
+  testWidgets('没有理发师时默认以店铺名义发布作品', (tester) async {
+    final repository = _NoStaffSalonPostRepository();
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: AppTheme.lightTheme,
+        home: MerchantSalonScreen(
+          repository: repository,
+          enableRealtime: false,
+          initialTabIndex: 3,
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+
+    expect(find.text('店铺官方（热辣发廊）'), findsOneWidget);
+    await tester.enterText(
+      find.byKey(const ValueKey('salon-post-content')),
+      '周年店庆',
+    );
+    await tester.tap(find.text('发布作品').last);
+    await tester.pump();
+    await tester.pump(const Duration(seconds: 4));
+
+    expect(repository.createdPost, containsPair('authorType', 'salon'));
+    expect(repository.createdPost, containsPair('authorStaffId', ''));
+    expect(find.text('官方'), findsOneWidget);
   });
 
   test('后台待审核商家只按最后内容提交时间倒序排列，未提交的排最后', () {
