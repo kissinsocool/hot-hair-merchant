@@ -128,6 +128,20 @@ class _AdminRepository extends AdminRepository {
     return [];
   }
 
+  bool homeRecommendationsEnabled = true;
+
+  @override
+  Future<bool> fetchHomeRecommendationsEnabled() async {
+    calls.add('homeRecommendations');
+    return homeRecommendationsEnabled;
+  }
+
+  @override
+  Future<bool> saveHomeRecommendationsEnabled(bool enabled) async {
+    calls.add('saveHomeRecommendations:$enabled');
+    return homeRecommendationsEnabled = enabled;
+  }
+
   @override
   Future<List<Map<String, dynamic>>> fetchSupportMessages() async {
     calls.add('support');
@@ -443,6 +457,7 @@ void main() {
         'users',
         'images',
         'posts',
+        'homeRecommendations',
         'promotions',
         'complaints',
         'users',
@@ -460,6 +475,20 @@ void main() {
       expect(tester.takeException(), isNull);
     },
   );
+
+  testWidgets('动态审核页可以开关小程序首页的推荐模块', (tester) async {
+    final repository = _AdminRepository();
+    await _mount(tester, repository);
+    await _open(tester, '动态审核');
+    expect(find.text('小程序首页显示推荐模块'), findsOneWidget);
+    expect(tester.widget<Switch>(find.byType(Switch)).value, isTrue);
+
+    await tester.tap(find.byType(Switch));
+    await tester.pumpAndSettle();
+    expect(repository.calls.last, 'saveHomeRecommendations:false');
+    expect(tester.widget<Switch>(find.byType(Switch)).value, isFalse);
+    expect(tester.takeException(), isNull);
+  });
 
   testWidgets('a page failure does not block other pages and can be retried', (
     tester,

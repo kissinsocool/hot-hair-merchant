@@ -333,6 +333,21 @@ class AdminRepository {
     );
   }
 
+  /// 小程序首页推荐模块（「你可能喜欢」）是否显示。
+  Future<bool> fetchHomeRecommendationsEnabled() async {
+    final response = await _apiClient.request('/admin/home-recommendations');
+    return (response.data as Map)['enabled'] != false;
+  }
+
+  Future<bool> saveHomeRecommendationsEnabled(bool enabled) async {
+    final response = await _apiClient.request(
+      '/admin/home-recommendations',
+      method: 'PATCH',
+      data: {'enabled': enabled},
+    );
+    return (response.data as Map)['enabled'] != false;
+  }
+
   Future<List<Map<String, dynamic>>> fetchSalonPosts() async {
     final data = await _apiClient.requestAllPages('/admin/salon-posts');
     return data.map((item) => Map<String, dynamic>.from(item as Map)).toList();
