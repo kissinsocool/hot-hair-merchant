@@ -548,6 +548,28 @@ void main() {
     expect(repository.calls.where((call) => call == 'ad').length, 1);
   });
 
+  testWidgets(
+    'overview client card shows today new count and opens client users',
+    (tester) async {
+      final repository = _AdminRepository()
+        ..overviewRequest = (Completer<Map<String, dynamic>>()
+          ..complete({'clientCount': 120, 'todayNewClientCount': 3}))
+        ..users = [
+          {
+            'id': 'user-1',
+            'displayName': '测试用户',
+            'avatarReviewStatus': 'pending',
+          },
+        ];
+      await _mount(tester, repository);
+      expect(find.text('今日新增：3'), findsOneWidget);
+      await tester.tap(find.text('120'));
+      await tester.pumpAndSettle();
+      expect(repository.calls, ['overview', 'users']);
+      expect(find.text('待审核 (1)'), findsOneWidget);
+    },
+  );
+
   testWidgets('review updates its page and invalidates cached related pages', (
     tester,
   ) async {

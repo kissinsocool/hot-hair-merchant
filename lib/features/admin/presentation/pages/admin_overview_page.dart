@@ -16,7 +16,12 @@ class AdminOverviewPage extends AdminPage {
     required super.active,
     required super.refreshVersion,
     required super.onChanged,
+    this.onViewClients,
   });
+
+  /// Opens the client users page from the overview client count card.
+  final VoidCallback? onViewClients;
+
   @override
   State<AdminOverviewPage> createState() => _AdminOverviewPageState();
 }
@@ -62,6 +67,7 @@ class _AdminOverviewPageState
   Widget buildContent(BuildContext context) => _OverviewTab(
     overview: data!,
     onViewOrders: _showOrders,
+    onViewClients: widget.onViewClients,
     onViewNewOrders:
         !_openingNewOrders && data!['bookingsSnapshotBefore'] is String
         ? _showNewOrders
@@ -156,11 +162,13 @@ class _OverviewTab extends StatelessWidget {
   const _OverviewTab({
     required this.overview,
     required this.onViewOrders,
+    required this.onViewClients,
     required this.onViewNewOrders,
   });
 
   final Map<String, dynamic> overview;
   final VoidCallback onViewOrders;
+  final VoidCallback? onViewClients;
   final VoidCallback? onViewNewOrders;
 
   @override
@@ -204,6 +212,7 @@ class _OverviewTab extends StatelessWidget {
           InkWell(
             onTap: switch (item.$1) {
               '全部订单' => onViewOrders,
+              '客户端用户' => onViewClients,
               '今日新订单' => onViewNewOrders,
               _ => null,
             },
@@ -250,6 +259,16 @@ class _OverviewTab extends StatelessWidget {
                         ),
                       ),
                     ),
+                  if (item.$1 == '客户端用户')
+                    Positioned(
+                      top: 0,
+                      right: 0,
+                      child: _TodayNewBadge(
+                        count:
+                            (overview['todayNewClientCount'] as num? ?? 0)
+                                .toInt(),
+                      ),
+                    ),
                 ],
               ),
             ),
@@ -257,4 +276,31 @@ class _OverviewTab extends StatelessWidget {
       ],
     );
   }
+}
+
+class _TodayNewBadge extends StatelessWidget {
+  const _TodayNewBadge({required this.count});
+
+  final int count;
+
+  @override
+  Widget build(BuildContext context) => Semantics(
+    label: '今日新增$count个客户端用户',
+    excludeSemantics: true,
+    child: Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      decoration: BoxDecoration(
+        color: Colors.red,
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Text(
+        '今日新增：$count',
+        style: const TextStyle(
+          color: Colors.white,
+          fontSize: 12,
+          fontWeight: FontWeight.bold,
+        ),
+      ),
+    ),
+  );
 }

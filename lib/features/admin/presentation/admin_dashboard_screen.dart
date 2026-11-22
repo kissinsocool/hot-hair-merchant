@@ -115,6 +115,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
                   active: _selected == 0,
                   refreshVersion: _refreshVersions[0],
                   onChanged: () => _invalidateOtherPages(0),
+                  onViewClients: () => _tabs.animateTo(2),
                 ),
                 AdminMerchantsPage(
                   repository: _repository,
