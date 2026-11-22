@@ -259,7 +259,8 @@ class _OverviewTab extends StatelessWidget {
                         ),
                       ),
                     ),
-                  if (item.$1 == '客户端用户')
+                  if (item.$1 == '客户端用户' &&
+                      (overview['todayNewClientCount'] as num? ?? 0) > 0)
                     Positioned(
                       top: 0,
                       right: 0,

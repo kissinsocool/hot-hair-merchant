@@ -570,6 +570,15 @@ void main() {
     },
   );
 
+  testWidgets('overview hides the today new client badge when zero', (tester) async {
+    final repository = _AdminRepository()
+      ..overviewRequest = (Completer<Map<String, dynamic>>()
+        ..complete({'clientCount': 120, 'todayNewClientCount': 0}));
+    await _mount(tester, repository);
+    expect(find.text('120'), findsOneWidget);
+    expect(find.text('今日新增：0'), findsNothing);
+  });
+
   testWidgets('review updates its page and invalidates cached related pages', (
     tester,
   ) async {
