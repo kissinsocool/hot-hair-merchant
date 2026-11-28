@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../../core/theme/app_theme.dart';
+import '../../../merchant/data/salon_post_promotion_categories.dart';
 import '../../domain/admin_rules.dart';
 import '../admin_page.dart';
 import '../widgets/admin_widgets.dart';
@@ -192,6 +193,12 @@ class _SalonPostsTab extends StatelessWidget {
                               if ((post['serviceName']?.toString() ?? '')
                                   .isNotEmpty)
                                 Text('关联套餐：${post['serviceName']}'),
+                              if (salonPostPromotionCategoryLabel(
+                                post['promotionCategoryId'],
+                              ).isNotEmpty)
+                                Text(
+                                  '推广分类：${salonPostPromotionCategoryLabel(post['promotionCategoryId'])}',
+                                ),
                             ],
                           ),
                         ),

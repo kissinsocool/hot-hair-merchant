@@ -15,6 +15,7 @@ import '../../../core/widgets/page_width.dart';
 import '../../booking/data/booking_update_stream.dart';
 import '../../../core/image/image_upload_picker.dart';
 import '../data/merchant_salon_repository.dart';
+import '../data/salon_post_promotion_categories.dart';
 import 'merchant_notifications_screen.dart';
 
 String formatPriceFenForInput(dynamic value) {
@@ -222,6 +223,8 @@ class _MerchantSalonScreenState extends State<MerchantSalonScreen> {
   // 理发师 id，或 [salonPostAuthorValue] 表示以店铺名义投稿。
   String _postAuthor = salonPostAuthorValue;
   String? _postServiceId;
+  // 推广分类（salonPostPromotionCategories 的 id），发布时必选；null 表示还没选。
+  String? _postPromotionCategoryId;
   final List<MerchantNotification> _notifications = [];
   final Set<String> _notifiedReviewIds = {};
   StreamSubscription<Map<String, dynamic>>? _bookingUpdateSubscription;
@@ -290,6 +293,7 @@ class _MerchantSalonScreenState extends State<MerchantSalonScreen> {
         }
         _postAuthor = _defaultPostAuthor();
         _postServiceId = null;
+        _postPromotionCategoryId = null;
         _isLoading = false;
       });
       unawaited(_autoFillAddressFromCurrentLocation());
@@ -1183,6 +1187,11 @@ class _MerchantSalonScreenState extends State<MerchantSalonScreen> {
       _showTopMessage('请先填写并保存店铺名称，再以店铺名义发布');
       return;
     }
+    final promotionCategoryId = _postPromotionCategoryId;
+    if (promotionCategoryId == null) {
+      _showTopMessage('请选择推广分类');
+      return;
+    }
     if (content.isEmpty) {
       _showTopMessage('请输入作品内容');
       return;
@@ -1193,6 +1202,7 @@ class _MerchantSalonScreenState extends State<MerchantSalonScreen> {
         authorStaffId: bySalon ? null : _postAuthor,
         content: content,
         imageUrls: _postImageUrls,
+        promotionCategoryId: promotionCategoryId,
         serviceId: _postServiceId,
       );
       if (!mounted) return;
@@ -1201,6 +1211,7 @@ class _MerchantSalonScreenState extends State<MerchantSalonScreen> {
         _postContentController.clear();
         _postImageUrls = [];
         _postServiceId = null;
+        _postPromotionCategoryId = null;
       });
       _showTopMessage(
         '作品已提交审核',
@@ -2460,6 +2471,29 @@ class _MerchantSalonScreenState extends State<MerchantSalonScreen> {
               ),
             ),
             const SizedBox(height: 12),
+            // 推广分类决定作品出现在小程序首页「按分类查找」的哪个分类，与关联套餐的标签无关。
+            DropdownButtonFormField<String>(
+              key: ValueKey(
+                'salon-post-promotion-category-${_postPromotionCategoryId ?? 'none'}',
+              ),
+              initialValue: _postPromotionCategoryId,
+              decoration: const InputDecoration(
+                labelText: '推广分类',
+                hintText: '请选择',
+                border: OutlineInputBorder(),
+              ),
+              items: salonPostPromotionCategories
+                  .map(
+                    (category) => DropdownMenuItem(
+                      value: category.id,
+                      child: Text(category.label),
+                    ),
+                  )
+                  .toList(),
+              onChanged: (value) =>
+                  setState(() => _postPromotionCategoryId = value),
+            ),
+            const SizedBox(height: 12),
             TextField(
               key: const ValueKey('salon-post-content'),
               controller: _postContentController,
@@ -2495,9 +2529,9 @@ class _MerchantSalonScreenState extends State<MerchantSalonScreen> {
               ],
             ),
             const SizedBox(height: 4),
-            // 小程序「按分类查找」展示每条动态的第一张图，分类取自关联套餐的标签。
+            // 小程序「按分类查找」展示每条动态的第一张图，分类取自上面选的推广分类。
             const Text(
-              '※ 默认第一张图片展示在首页分类推广内（需关联套餐）',
+              '※ 默认第一张图片展示在首页所选推广分类内',
               style: TextStyle(color: Colors.pink, fontSize: 12),
             ),
             if (_postImageUrls.isNotEmpty) ...[
@@ -2663,6 +2697,14 @@ class _MerchantSalonScreenState extends State<MerchantSalonScreen> {
           if ((post['serviceName']?.toString() ?? '').isNotEmpty) ...[
             const SizedBox(height: 8),
             Text('关联套餐：${post['serviceName']}'),
+          ],
+          if (salonPostPromotionCategoryLabel(
+            post['promotionCategoryId'],
+          ).isNotEmpty) ...[
+            const SizedBox(height: 4),
+            Text(
+              '推广分类：${salonPostPromotionCategoryLabel(post['promotionCategoryId'])}',
+            ),
           ],
           if (images.isNotEmpty) ...[
             const SizedBox(height: 12),

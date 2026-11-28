@@ -156,6 +156,7 @@ class _SalonPostRepository extends MerchantSalonRepository {
     required String? authorStaffId,
     required String content,
     required List<String> imageUrls,
+    required String promotionCategoryId,
     String? serviceId,
   }) async {
     createdPost = {
@@ -167,6 +168,7 @@ class _SalonPostRepository extends MerchantSalonRepository {
       'imageUrls': imageUrls,
       'serviceId': serviceId,
       'serviceName': serviceId == 'service-1' ? '剪发套餐' : '',
+      'promotionCategoryId': promotionCategoryId,
       'createdAt': '2026-09-24T10:00:00Z',
     };
     return createdPost!;
@@ -208,7 +210,7 @@ void main() {
     await tester.pump(const Duration(milliseconds: 300));
 
     expect(
-      find.text('※ 默认第一张图片展示在首页分类推广内（需关联套餐）'),
+      find.text('※ 默认第一张图片展示在首页所选推广分类内'),
       findsOneWidget,
     );
 
@@ -220,16 +222,35 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.text('剪发套餐').last);
     await tester.pumpAndSettle();
+    // 没选推广分类不能发布。
+    await tester.ensureVisible(find.text('发布作品').last);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('发布作品').last);
+    await tester.pump();
+    expect(repository.createdPost, isNull);
+    expect(find.text('请选择推广分类'), findsOneWidget);
+    await tester.pump(const Duration(seconds: 4));
+
+    await tester.ensureVisible(find.text('推广分类'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('salon-post-promotion-category-none')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('卷发').last);
+    await tester.pumpAndSettle();
     // 发布区的标题和按钮都是「发布作品」，按钮在后。
+    await tester.ensureVisible(find.text('发布作品').last);
+    await tester.pumpAndSettle();
     await tester.tap(find.text('发布作品').last);
     await tester.pump();
     await tester.pump(const Duration(seconds: 4));
 
+    expect(repository.createdPost, containsPair('promotionCategoryId', 'curly'));
     expect(repository.createdPost, containsPair('authorStaffId', 'staff-1'));
     expect(repository.createdPost, containsPair('content', '今日短发作品'));
     expect(repository.createdPost, containsPair('serviceId', 'service-1'));
     expect(find.text('今日短发作品'), findsOneWidget);
     expect(find.text('关联套餐：剪发套餐'), findsOneWidget);
+    expect(find.text('推广分类：卷发'), findsOneWidget);
   });
 
   testWidgets('没有理发师时默认以店铺名义发布作品', (tester) async {
@@ -252,6 +273,12 @@ void main() {
       find.byKey(const ValueKey('salon-post-content')),
       '周年店庆',
     );
+    await tester.ensureVisible(find.text('推广分类'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('salon-post-promotion-category-none')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('护理').last);
+    await tester.pumpAndSettle();
     await tester.tap(find.text('发布作品').last);
     await tester.pump();
     await tester.pump(const Duration(seconds: 4));

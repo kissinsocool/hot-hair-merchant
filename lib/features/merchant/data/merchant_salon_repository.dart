@@ -27,10 +27,12 @@ class MerchantSalonRepository {
   }
 
   /// [authorStaffId] 为 null 时以店铺本身的名义投稿（authorType: salon）。
+  /// [promotionCategoryId] 取自 salonPostPromotionCategories，后端据此把作品归到小程序首页的分类。
   Future<Map<String, dynamic>> createSalonPost({
     required String? authorStaffId,
     required String content,
     required List<String> imageUrls,
+    required String promotionCategoryId,
     String? serviceId,
   }) async {
     final response = await _apiClient.request(
@@ -42,6 +44,7 @@ class MerchantSalonRepository {
         'content': content,
         'imageUrls': imageUrls,
         'serviceId': ?serviceId,
+        'promotionCategoryId': promotionCategoryId,
       },
     );
     return Map<String, dynamic>.from(response.data as Map);
