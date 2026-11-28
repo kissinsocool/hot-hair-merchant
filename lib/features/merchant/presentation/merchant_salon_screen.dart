@@ -107,7 +107,7 @@ const serviceTagOptions = <({String id, String label})>[
   (id: 'color', label: '染发'),
   (id: 'perm', label: '烫发'),
   (id: 'care', label: '护理'),
-  (id: 'styling', label: '发型设计'),
+  (id: 'styling', label: '造型设计'),
   (id: 'scalp_care', label: '头皮护理'),
   (id: 'men', label: '男士'),
   (id: 'women', label: '女士'),
